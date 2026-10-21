@@ -606,6 +606,12 @@ public final class MarkAIMod implements ModInitializer {
 
         int accepted = 0, skipped = 0;
         for (Companion companion : owned) {
+            // Cancellation must also work when a companion is temporarily unloaded.
+            if (command.equals("stop")) {
+                cancelCompanionAction(companion, owner);
+                accepted++;
+                continue;
+            }
             Wolf wolf = find(companion);
             if (companion.dead || wolf == null || !wolf.isAlive() || !wolf.isOwnedBy(owner)
                     || wolf.level() != owner.level() || owner.distanceToSqr(wolf) > 256) {
@@ -614,12 +620,6 @@ public final class MarkAIMod implements ModInitializer {
             }
             if (command.equals("attack") && !CompanionCombatRules.commandTargetAllowed(wolf, owner, target)) {
                 skipped++;
-                continue;
-            }
-
-            if (command.equals("stop")) {
-                cancelCompanionAction(companion, owner);
-                accepted++;
                 continue;
             }
             cancelTrick(companion);
