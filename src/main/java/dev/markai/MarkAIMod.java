@@ -403,13 +403,27 @@ public final class MarkAIMod implements ModInitializer {
             ServerLevel level = (ServerLevel) owner.level();
             Wolf wolf = EntityTypes.WOLF.create(level, EntitySpawnReason.COMMAND);
             if (wolf == null) return 0;
-            Vec3 pos = owner.position().add(1, 0, 1);
-            wolf.setPos(pos.x, pos.y, pos.z);
-            if (!level.noCollision(wolf) || !level.getFluidState(wolf.blockPosition()).isEmpty()) {
+            // Multiple wolves cannot all spawn at the exact same position.
+            Vec3 origin = owner.position();
+            boolean freePosition = false;
+            for (int[] offset : new int[][] {
+                    {1, 1}, {-1, 1}, {1, -1}, {-1, -1},
+                    {2, 0}, {-2, 0}, {0, 2}, {0, -2},
+                    {2, 2}, {-2, 2}, {2, -2}, {-2, -2}
+            }) {
+                wolf.setPos(origin.x + offset[0], origin.y, origin.z + offset[1]);
+                if (level.noCollision(wolf) && level.getFluidState(wolf.blockPosition()).isEmpty()) {
+                    freePosition = true;
+                    break;
+                }
+            }
+            if (!freePosition) {
                 owner.sendSystemMessage(Component.literal("Для волка нужно свободное сухое место рядом с игроком."));
                 return 0;
             }
-            wolf.setCustomName(Component.literal("Марк"));
+            int ownedCount = companions.owned(owner.getUUID()).size();
+            String wolfName = respawn ? c.living.name : ownedCount == 0 ? "Марк" : "Марк " + (ownedCount + 1);
+            wolf.setCustomName(Component.literal(wolfName));
             wolf.setCustomNameVisible(true);
             wolf.tame(owner);
             wolf.setHealth(wolf.getMaxHealth());
@@ -420,6 +434,7 @@ public final class MarkAIMod implements ModInitializer {
             c = new Companion(); c.owner = owner.getUUID(); c.entity = wolf.getUUID();
             c.id = previousCompanion == null ? UUID.randomUUID() : previousCompanion.id == null ? previousCompanion.entity : previousCompanion.id;
             c.living = previousCompanion == null ? LivingState.forIdentity(c.id) : previousCompanion.living;
+            if (previousCompanion == null && ownedCount > 0) c.living.name = wolfName;
             if (previousCompanion != null) { c.memory = previousCompanion.memory; c.training = previousCompanion.training; }
             if (previousCompanion == null && aiConfig != null) {
                 c.living.settings.followDistance = aiConfig.followDistance;
