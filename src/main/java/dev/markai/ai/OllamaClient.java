@@ -59,6 +59,28 @@ public final class OllamaClient implements LlmProvider {
         Не упоминай технические поля. Без Markdown и кодов оформления.
         Ответ — только JSON {"action":"say","say":"короткая русская реплика"}, до 240 символов.
         """;
+    private static final String GROUP_SYSTEM_PROMPT = """
+        Ты — разумный говорящий волк-компаньон игрока Minecraft. Твоё собственное имя задано
+        только в companion.name, характер — в personality, состояние — в emotions.
+        Это ОБЩИЙ чат хозяина и его питомцев, а не личный диалог. Реплики в истории подписаны.
+        Отвечай только за себя, не сочиняй реплики хозяина или других питомцев.
+        При group_turn=player_reply ответь на последнее сообщение игрока; можешь коротко
+        учесть уже высказанное другим питомцем. При group_turn=peer_reply последнее user —
+        реплика собеседника reply_to: ответь именно ему по его настоящему имени с учётом group_topic.
+        При peer_reply начни say с ТОЧНОГО имени reply_to и запятой: «Имя, ...».
+        Это обращение к собеседнику, не представление себя. Не пропускай и не меняй это имя.
+        Если тебе действительно интересно продолжить разговор с другим питомцем, задай ему
+        короткий вопрос по имени: «Имя, ...?» Имена бери строго из group_members.
+        Для завершения просто ответь без нового вопроса другому питомцу. Не обязан продолжать.
+        Общий разговор ограничен десятью репликами всех питомцев вместе, не десятью на каждого.
+        replies_remaining — число реплик после твоей. Если оно равно нулю, закончи разговор
+        естественным утверждением без нового вопроса, чтобы не приглашать ответ за пределом лимита.
+        Не повторяй свои прежние реплики. Не придумывай события, которых нет в текущем контексте.
+        Достаточно одной-двух естественных русских фраз с характером волка, без шаблонного
+        представления и повторения имени. Не начинай бесконечную перекличку и не требуй ответа.
+        В этом чате ты только говоришь: action строго say. Движение и бой не меняются от ответа.
+        Верни только JSON вида {"action":"say","say":"твоя реплика"}.
+        """;
     private static final String SYSTEM_PROMPT = """
         Ты — Марк, разумный говорящий волк (talking wolf), живущий в Minecraft.
         Твоё действительное имя и тело заданы в CURRENT_GAME_STATE.companion: сохранённое
@@ -294,6 +316,9 @@ public final class OllamaClient implements LlmProvider {
         String relevantFacts = "";
         boolean ambient = context.getAsJsonObject().has("conversation_mode")
             && "ambient".equals(context.getAsJsonObject().get("conversation_mode").getAsString());
+        boolean group = context.getAsJsonObject().has("conversation_mode")
+            && "group".equals(context.getAsJsonObject().get("conversation_mode").getAsString());
+        if (group) requestedAction = "say";
         if (!ambient && context.getAsJsonObject().has("dialogue_repair")) {
             var repair = context.getAsJsonObject().getAsJsonObject("dialogue_repair");
             String rejected = stringField(repair, "rejected_reply");
@@ -329,9 +354,10 @@ public final class OllamaClient implements LlmProvider {
                 + ". В ответе на вопрос о плане повтори известные конкретные материалы и детали из цитаты, без их замены общими словами.";
         }
         // Keep persona and current state in one explicit system slot across model templates.
-        messages.add(message("system", (ambient ? AMBIENT_SYSTEM_PROMPT : SYSTEM_PROMPT)
+        messages.add(message("system", (ambient ? AMBIENT_SYSTEM_PROMPT : group ? GROUP_SYSTEM_PROMPT : SYSTEM_PROMPT)
             + "\nCURRENT_GAME_STATE: " + context + "\nrequested_action=" + requestedAction + relevantFacts
             + (ambient ? "\nПовод для самостоятельной реплики: " + playerMessage
+                : group ? "\nТекущий запрос находится в последнем user. Соблюдай group_turn и говори только за companion.name."
                 : "\nПоследнее сообщение игрока находится в последнем user после истории; отвечай на него, не продолжай собственную предыдущую фразу.")));
         int historyCharacters = 0;
         for (ChatMessage previous : history) {

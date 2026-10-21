@@ -150,6 +150,64 @@ public final class MultiCompanionGameTest {
         helper.succeed();
     }
 
+    @GameTest(structure = "markai-test:arena", maxTicks = 300)
+    public void groupCollectionTransfersOneRealStackExactlyOnce(GameTestHelper helper) throws Exception {
+        for (int x = 0; x < 32; x++) for (int z = 0; z < 32; z++) helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+        ServerPlayer owner = player(helper, 2, 2, 2);
+        MarkAIMod mod = FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream()
+            .filter(MarkAIMod.class::isInstance).map(MarkAIMod.class::cast).findFirst().orElseThrow();
+        command(owner, "mark spawn"); command(owner, "mark spawn");
+        var roster = TestCompanions.registry(mod).owned(owner.getUUID());
+        var first = roster.get(0); var second = roster.get(1);
+        Wolf a = (Wolf) helper.getLevel().getEntity(first.entity), b = (Wolf) helper.getLevel().getEntity(second.entity);
+        var pos = helper.absoluteVec(new Vec3(2, 2, 5));
+        var drop = new net.minecraft.world.entity.item.ItemEntity(helper.getLevel(), pos.x, pos.y, pos.z,
+            new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.BEEF, 9));
+        drop.setNoPickUpDelay(); drop.setDeltaMovement(Vec3.ZERO); helper.getLevel().addFreshEntity(drop);
+        backend().command(owner, "all:collect");
+        helper.assertTrue(first.workActive && second.workActive, "One group command starts both independent collection jobs");
+        helper.startSequence().thenWaitUntil(() -> {
+            int total = 0;
+            for (Wolf wolf : java.util.List.of(a, b)) {
+                var bag = ((dev.markai.inventory.CompanionInventoryHolder) wolf).markai$inventory();
+                for (int i = 0; i < bag.getContainerSize(); i++) if (bag.getItem(i).is(net.minecraft.world.item.Items.BEEF)) total += bag.getItem(i).getCount();
+            }
+            helper.assertTrue(drop.isRemoved() && total == 9, "Two wolves must transfer exactly the original nine meat items, with no duplication");
+        }).thenExecute(() -> {
+            try { backend().command(owner, "all:stop"); } catch (Exception error) { throw new RuntimeException(error); }
+            helper.assertTrue(!first.workActive && !second.workActive, "Group stop clears both remaining jobs");
+        }).thenSucceed();
+    }
+
+    @GameTest(structure = "markai-test:arena", maxTicks = 160)
+    public void commonSettingsAffectOnlyOwnedCompanionsAndPersist(GameTestHelper helper) throws Exception {
+        for (int x=0;x<32;x++) for(int z=0;z<32;z++) helper.setBlock(new BlockPos(x,1,z),Blocks.STONE);
+        ServerPlayer owner=player(helper,2,2,2), stranger=player(helper,12,2,12);
+        MarkAIMod mod=FabricLoader.getInstance().getEntrypoints("main",ModInitializer.class).stream()
+            .filter(MarkAIMod.class::isInstance).map(MarkAIMod.class::cast).findFirst().orElseThrow();
+        command(owner,"mark spawn");command(owner,"mark spawn");command(stranger,"mark spawn");
+        var registry=TestCompanions.registry(mod);var owned=registry.owned(owner.getUUID());
+        var foreign=registry.selected(stranger.getUUID());UUID selected=registry.selected(owner.getUUID()).id;
+        foreign.living.settings.defense=true;foreign.living.settings.hud=true;foreign.living.settings.followDistance=4;
+        owned.getFirst().living.settings.hud=false;owned.getLast().living.settings.hud=true;
+        JsonObject before=JsonParser.parseString(backend().snapshot(owner)).getAsJsonObject();
+        helper.assertTrue(before.getAsJsonObject("common_settings").get("hud").getAsString().equals("mixed"),"Mixed preferences are shown honestly");
+        backend().setting(owner,"all:defense","false");backend().setting(owner,"all:hud","false");
+        backend().setting(owner,"all:follow_distance","9");backend().setting(owner,"mutual_replies","false");
+        helper.assertTrue(owned.stream().allMatch(c->!c.living.settings.defense&&!c.living.settings.hud&&c.living.settings.followDistance==9),"One bulk setting applies to both owned identities");
+        helper.assertTrue(foreign.living.settings.defense&&foreign.living.settings.hud&&foreign.living.settings.followDistance==4,"Bulk settings cannot affect another owner");
+        helper.assertTrue(registry.selected(owner.getUUID()).id.equals(selected),"Bulk configuration does not switch selection");
+        String originalName=owned.getFirst().living.name;
+        backend().setting(owner,"all:name","Wrong name");backend().setting(owner,"all:trait_trust","0");
+        helper.assertTrue(owned.getFirst().living.name.equals(originalName),"Names and personalities cannot be overwritten through bulk preference keys");
+        Path path=helper.getLevel().getServer().getWorldPath(LevelResource.ROOT).resolve("markai.json");
+        var saved=new dev.markai.companion.CompanionStore<>(MarkAIMod.Companion.class).read(path);
+        helper.assertTrue(!saved.groups().get(owner.getUUID()).mutualReplies(),"Owner group preference survives a real store read");
+        JsonObject strangerView=JsonParser.parseString(backend().snapshot(stranger)).getAsJsonObject();
+        helper.assertTrue(strangerView.getAsJsonObject("group").get("mutual_replies").getAsBoolean(),"A different owner's group preferences remain separate");
+        helper.succeed();
+    }
+
     private static ServerPlayer player(GameTestHelper helper, int x, int y, int z) {
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
         player.connection.handleAcceptPlayerLoad(new ServerboundPlayerLoadedPacket());

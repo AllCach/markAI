@@ -27,6 +27,7 @@ public final class CompanionNetwork {
         String snapshot(ServerPlayer player);
         void command(ServerPlayer player, String action);
         void chat(ServerPlayer player, String message);
+        void groupChat(ServerPlayer player, String message);
         void cancel(ServerPlayer player);
         void deleteMemory(ServerPlayer player, String id);
         void setting(ServerPlayer player, String key, String value);
@@ -59,6 +60,11 @@ public final class CompanionNetwork {
         public static final Type<Cancel> TYPE = CompanionNetwork.type("ui_cancel");
         public static final StreamCodec<RegistryFriendlyByteBuf, Cancel> CODEC = StreamCodec.unit(new Cancel());
         @Override public Type<Cancel> type() { return TYPE; }
+    }
+    public record GroupChat(String message) implements CustomPacketPayload {
+        public static final Type<GroupChat> TYPE = CompanionNetwork.type("ui_group_chat");
+        public static final StreamCodec<RegistryFriendlyByteBuf, GroupChat> CODEC = StreamCodec.composite(ByteBufCodecs.stringUtf8(512), GroupChat::message, GroupChat::new);
+        @Override public Type<GroupChat> type() { return TYPE; }
     }
     public record MemoryDelete(String id) implements CustomPacketPayload {
         public static final Type<MemoryDelete> TYPE = CompanionNetwork.type("ui_memory_delete");
@@ -94,6 +100,7 @@ public final class CompanionNetwork {
         var c2s = PayloadTypeRegistry.serverboundPlay();
         c2s.register(Request.TYPE, Request.CODEC); c2s.register(Action.TYPE, Action.CODEC);
         c2s.register(Chat.TYPE, Chat.CODEC); c2s.register(Cancel.TYPE, Cancel.CODEC);
+        c2s.register(GroupChat.TYPE, GroupChat.CODEC);
         c2s.register(MemoryDelete.TYPE, MemoryDelete.CODEC); c2s.register(Setting.TYPE, Setting.CODEC);
         c2s.register(Select.TYPE, Select.CODEC);
         var s2c = PayloadTypeRegistry.clientboundPlay();
@@ -122,6 +129,17 @@ public final class CompanionNetwork {
             });
         });
         ServerPlayNetworking.registerGlobalReceiver(Cancel.TYPE, (payload, context) -> mutate(context.player(), () -> backend.cancel(context.player())));
+        ServerPlayNetworking.registerGlobalReceiver(GroupChat.TYPE, (payload, context) -> {
+            ServerPlayer player = context.player();
+            Limits limits = LIMITS.computeIfAbsent(player.getUUID(), key -> new Limits());
+            long now = System.nanoTime();
+            if (now < limits.chatAt) { rateLimited(player, limits, now); return; }
+            limits.chatAt = now + 1_000_000_000L;
+            mutate(player, () -> {
+                if (!NetworkRules.chat(payload.message())) throw new IllegalArgumentException("Invalid group chat message");
+                backend.groupChat(player, payload.message());
+            });
+        });
         ServerPlayNetworking.registerGlobalReceiver(MemoryDelete.TYPE, (payload, context) -> mutate(context.player(), () -> {
             if (!NetworkRules.memoryId(payload.id())) throw new IllegalArgumentException("Invalid memory id");
             backend.deleteMemory(context.player(), payload.id());

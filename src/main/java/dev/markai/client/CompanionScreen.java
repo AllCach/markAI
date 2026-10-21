@@ -61,6 +61,8 @@ public final class CompanionScreen extends Screen {
         previousCard = null; nextCard = null;
         memoryButtons.clear(); settingButtons.clear(); traitButtons.clear();
         addButton("×", left + panelWidth - 29, top + 8, 20, () -> minecraft.gui.setScreen(null));
+        addButton(label("markai.hub.open_short"), left + 80, top + 8, 32, MarkAIClient::showHub)
+            .setTooltip(Tooltip.create(tr("markai.hub.title")));
         previousCompanion = addButton("‹", left + panelWidth - 79, top + 8, 20, () -> selectCompanion(-1));
         previousCompanion.setTooltip(Tooltip.create(tr("markai.ui.previous_companion")));
         nextCompanion = addButton("›", left + panelWidth - 56, top + 8, 20, () -> selectCompanion(1));
@@ -245,6 +247,10 @@ public final class CompanionScreen extends Screen {
     }
     @Override public void tick() { selectionUpdated(); updateLabels(); }
     private void updateLabels() {
+        if (!requestedCompanion.isBlank() && !requestedCompanion.equals(state().companionId())
+                && System.nanoTime() - selectionRequestedAt > 2_000_000_000L) {
+            requestedCompanion = ""; clearWidgets(); init(); return;
+        }
         if (requestedCompanion.equals(state().companionId()) || System.nanoTime() - selectionRequestedAt > 2_000_000_000L) requestedCompanion = "";
         boolean canSelect = MarkAIClient.available() && state().companions().size() > 1 && requestedCompanion.isBlank();
         if (previousCompanion != null) previousCompanion.active = canSelect;
@@ -274,11 +280,14 @@ public final class CompanionScreen extends Screen {
             String key = TRAITS[i];
             traitButtons.get(i).setMessage(Component.literal(label("markai.trait." + key) + ": " + String.format(Locale.ROOT, "%.0f", ClientCompanionState.number(state().traits(), key, 50))));
         }
+        if (!requestedCompanion.isBlank()) for (var child : children()) {
+            if (child instanceof Button button && !button.getMessage().getString().equals("×")) button.active = false;
+        }
     }
 
     private void send() {
         String value = input.getValue().strip();
-        if (!state().bool("can_chat", true) || !NetworkRules.chat(value)) return;
+        if (!requestedCompanion.isBlank() || !state().bool("can_chat", true) || !NetworkRules.chat(value)) return;
         if (MarkAIClient.chat(value)) { input.setValue(""); draft = ""; conversationScroll = 0; }
     }
     @Override public boolean keyPressed(KeyEvent event) {
@@ -319,7 +328,7 @@ public final class CompanionScreen extends Screen {
         graphics.fill(0, 0, width, height, 0x9910181B);
         graphics.fill(left, top, left + panelWidth, top + panelHeight, 0xF0192528);
         graphics.outline(left, top, panelWidth, panelHeight, 0xFF426152);
-        graphics.text(font, font.plainSubstrByWidth(title.getString(), 94), left + 12, top + 14, WHITE);
+        graphics.text(font, font.plainSubstrByWidth(title.getString(), 64), left + 12, top + 14, WHITE);
         String name = state().string("name", "Mark");
         int index = companionIndex();
         String selected = (index < 0 ? "" : (index + 1) + "/" + state().companions().size() + " ") + name;

@@ -7,7 +7,9 @@ import dev.markai.ai.LlmProvider;
 import dev.markai.ai.OllamaClient;
 import dev.markai.client.ClientCompanionState;
 import dev.markai.client.CompanionScreen;
+import dev.markai.client.CompanionHubScreen;
 import dev.markai.client.MarkAIClient;
+import dev.markai.network.CompanionNetwork;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.api.ModInitializer;
@@ -41,6 +43,7 @@ import org.lwjgl.sdl.SDLVideo;
 @Environment(EnvType.CLIENT)
 public final class ClientUiGameTest implements FabricClientGameTest {
     @Override public void runTest(ClientGameTestContext context) {
+        writeHubResult(false,0,0);
         WindowState originalWindow = context.computeOnClient(client -> {
             var window = client.getWindow(); var hooks = (WindowHooks) (Object) window;
             return new WindowState(client.options.fullscreen().get(), client.options.guiScale().get(),
@@ -50,8 +53,11 @@ public final class ClientUiGameTest implements FabricClientGameTest {
         var windowChecks = new ArrayList<Map<String, Object>>();
         var pending = new CompletableFuture<OllamaClient.Reply>();
         var calls = new AtomicInteger();
+        var groupCalls = new java.util.concurrent.CopyOnWriteArrayList<GroupCall>();
         LlmProvider fake = new LlmProvider() {
             @Override public CompletableFuture<OllamaClient.Reply> ask(String observation, String question, List<OllamaClient.ChatMessage> history) {
+                if (question.equals("Что скажешь?")) check(history.size() == 2 && history.getLast().role().equals("assistant"),
+                    "The pending question must be sent once as the current request, not duplicated in LLM history");
                 return calls.incrementAndGet() == 1 ? CompletableFuture.completedFuture(new OllamaClient.Reply("say", "Запомнил: тебе нравятся берёзовые дома.")) : pending;
             }
             @Override public void close() { pending.cancel(true); }
@@ -124,6 +130,12 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                 pace(context); context.clickScreenButton("markai.ui.send"); connection.waitForServerboundPackets();
                 context.waitFor(client -> calls.get() == 2);
                 context.waitFor(client -> !MarkAIClient.STATE.bool("can_chat", true));
+                context.runOnClient(client -> {
+                    check(messageCount("user", "Что скажешь?") == 1, "The accepted user message must be visible exactly once while the reply is pending");
+                    check(editBox(client.gui.screen()).getValue().isEmpty(), "The accepted question moves from the input into the dialogue immediately");
+                });
+                assertLayout(context, windowChecks, "fullscreen-dialogue-pending");
+                context.takeScreenshot("markai-dialogue-pending");
                 context.getInput().typeChars("Следующий вопрос");
                 context.runOnClient(client -> {
                     client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
@@ -221,6 +233,200 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                 pace(context); context.runOnClient(client -> MarkAIClient.setting("hud", "true")); connection.waitForServerboundPackets();
                 context.waitFor(client -> ClientCompanionState.bool(MarkAIClient.STATE.settings(), "hud", false));
                 context.waitTicks(5); context.takeScreenshot("markai-hud");
+                UUID firstId = context.computeOnClient(client -> UUID.fromString(MarkAIClient.STATE.companionId()));
+                var secondId = new AtomicReference<UUID>();
+                var lateReply = new CompletableFuture<OllamaClient.Reply>();
+                server.runOnServer(instance -> {
+                    ServerPlayer owner = instance.getPlayerList().getPlayer(ownerId);
+                    instance.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark spawn");
+                    try {
+                        secondId.set(TestCompanions.selected(mod, ownerId).id);
+                        TestCompanions.registry(mod).select(ownerId, firstId);
+                        resetCooldown(mod, ownerId);
+                        Object prior = provider.get(mod);
+                        provider.set(mod, new LlmProvider() {
+                            public CompletableFuture<OllamaClient.Reply> ask(String observation, String question, List<OllamaClient.ChatMessage> history) { return lateReply; }
+                            public void close() { lateReply.cancel(true); }
+                        });
+                        try { instance.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark ask Проверка ответа после переключения."); }
+                        finally { provider.set(mod, prior); }
+                    } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
+                });
+                pace(context); context.runOnClient(client -> MarkAIClient.request()); connection.waitForServerboundPackets();
+                context.waitFor(client -> MarkAIClient.STATE.companions().size() == 2);
+                context.getInput().pressKey(KeyMapping.get("key.markai.dialogue")); context.waitForScreen(CompanionScreen.class);
+                context.runOnClient(client -> check(messageCount("user", "Проверка ответа после переключения.") == 1,
+                    "An in-flight question belongs to the selected companion and is shown before the answer"));
+                context.getInput().typeChars("Private unsent first draft");
+                pace(context); context.clickScreenButton("›"); connection.waitForServerboundPackets();
+                context.waitFor(client -> MarkAIClient.STATE.companionId().equals(secondId.get().toString()));
+                context.runOnClient(client -> check(editBox(client.gui.screen()).getValue().isEmpty() && MarkAIClient.STATE.messages().isEmpty(),
+                    "Changing companion clears its private draft and shows only its own history"));
+                context.getInput().typeChars("Second private draft");
+                context.runOnClient(client -> {
+                    check(!MarkAIClient.STATE.bool("can_chat", true), "The global generation limit is reflected in the newly selected companion's Send state");
+                    client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+                    check(editBox(client.gui.screen()).getValue().equals("Second private draft"), "A blocked request cannot clear the next companion's unsent draft");
+                });
+                server.runOnServer(instance -> lateReply.complete(new OllamaClient.Reply("say", "Late answer for first companion.")));
+                context.waitTicks(8);
+                context.runOnClient(client -> check(MarkAIClient.STATE.messages().isEmpty() && !MarkAIClient.STATE.notice().contains("Late answer for first"),
+                    "An old pending answer must not appear in a different companion's history or status"));
+                context.clickScreenButton("markai.tab.profile");
+                context.runOnClient(client -> { client.options.guiScale().set(1); client.resizeGui(); }); context.waitTicks(2);
+                assertLayout(context, windowChecks, "two-companion-carousel-scale1"); context.takeScreenshot("markai-two-companion-carousel");
+                restoreWindow(context, originalWindow);
+                context.clickScreenButton("markai.tab.dialogue");
+                pace(context); context.clickScreenButton("‹"); connection.waitForServerboundPackets();
+                context.waitFor(client -> MarkAIClient.STATE.companionId().equals(firstId.toString())
+                    && MarkAIClient.STATE.messages().toString().contains("Late answer for first"));
+                context.runOnClient(client -> {
+                    check(editBox(client.gui.screen()).getValue().isEmpty(), "Returning cannot leak the second companion's draft");
+                    check(messageCount("user", "Проверка ответа после переключения.") == 1
+                            && messageCount("assistant", "Late answer for first companion.") == 1,
+                        "The completed exchange replaces the in-flight display without duplicating either message");
+                });
+                closeWithEscape(context);
+                pace(context); context.getInput().holdKey(224); // SDL left Control.
+                try { context.getInput().pressKey(KeyMapping.get("key.markai.stay")); context.waitTicks(2); }
+                finally { context.getInput().releaseKey(224); }
+                connection.waitForServerboundPackets();
+                server.waitFor(instance -> allFollowing(mod, ownerId, false));
+                pace(context); context.getInput().holdKey(224);
+                try { context.getInput().pressKey(KeyMapping.get("key.markai.follow")); context.waitTicks(2); }
+                finally { context.getInput().releaseKey(224); }
+                connection.waitForServerboundPackets();
+                server.waitFor(instance -> allFollowing(mod, ownerId, true));
+                pace(context); context.getInput().holdKey(225); // SDL left Shift.
+                try { context.getInput().pressKey(KeyMapping.get("key.markai.quick")); context.waitTicks(2); }
+                finally { context.getInput().releaseKey(225); }
+                connection.waitForServerboundPackets();
+                context.waitFor(client -> client.gui.screen() == null && MarkAIClient.STATE.companionId().equals(secondId.get().toString()));
+
+                // Shared hub: real controls, owner packets and a finite sequence of controlled model replies.
+                var privateHistory = new AtomicReference<Map<UUID,List<OllamaClient.ChatMessage>>>();
+                server.runOnServer(instance -> {
+                    try {
+                        var owned=TestCompanions.registry(mod).owned(ownerId);
+                        owned.get(0).living.name="Рекс";owned.get(1).living.name="Луна";
+                        for(var member:owned) { member.living.settings.autochat=false;member.living.settings.defense=true; }
+                        ((CompanionNetwork.Backend)field(CompanionNetwork.class,"backend").get(null)).setting(instance.getPlayerList().getPlayer(ownerId),"mutual_replies","false");
+                        privateHistory.set(owned.stream().collect(java.util.stream.Collectors.toMap(c->c.id,c->c.memory.history())));
+                        provider.set(mod,new LlmProvider() {
+                            public CompletableFuture<OllamaClient.Reply> ask(String observation,String question,List<OllamaClient.ChatMessage> history) {
+                                var reply=new CompletableFuture<OllamaClient.Reply>();groupCalls.add(new GroupCall(observation,question,List.copyOf(history),reply));return reply;
+                            }
+                            public void close() { groupCalls.forEach(call->call.reply().cancel(true)); }
+                        });
+                    } catch(ReflectiveOperationException error) { throw new RuntimeException(error); }
+                });
+                pace(context);context.getInput().pressKey(KeyMapping.get("key.markai.hub"));context.waitForScreen(CompanionHubScreen.class);
+                context.waitFor(client->MarkAIClient.STATE.companions().size()==2 && MarkAIClient.STATE.companions().toString().contains("Луна"));
+                assertLayout(context,windowChecks,"hub-roster-window");context.takeScreenshot("markai-hub-roster-window");
+                pace(context);context.clickScreenButton("markai.tab.profile");connection.waitForServerboundPackets();context.waitForScreen(CompanionScreen.class);
+                context.waitFor(client->MarkAIClient.STATE.companionId().equals(firstId.toString()));
+                context.clickScreenButton("markai.hub.open_short");context.waitForScreen(CompanionHubScreen.class);
+                pace(context);context.runOnClient(client->MarkAIClient.select(secondId.get().toString()));connection.waitForServerboundPackets();
+                context.waitFor(client->MarkAIClient.STATE.companionId().equals(secondId.get().toString()));
+                context.clickScreenButton("markai.hub.tab.chat");context.getInput().typeChars("Всем привет, как настроение?");
+                enterFullscreen(context,"Всем привет, как настроение?");
+                for(int scale:List.of(2,4)) {
+                    setGuiScale(context,scale);
+                    for(String destination:List.of("companions","settings","chat")) {
+                        context.clickScreenButton("markai.hub.tab."+destination);context.waitTicks(1);
+                        assertLayout(context,windowChecks,"hub-fullscreen-scale"+scale+"-"+destination);
+                        context.takeScreenshot("markai-hub-"+destination+"-scale"+scale);
+                    }
+                }
+                context.runOnClient(client->check(editBox(client.gui.screen()).getValue().equals("Всем привет, как настроение?"),"Shared draft survives tabs and both fullscreen scales"));
+                context.clickScreenButton("markai.hub.tab.settings");
+                pace(context);clickMatching(context,text("markai.hub.setting.all_defense"),true);connection.waitForServerboundPackets();
+                server.waitFor(instance->{ try{return TestCompanions.registry(mod).owned(ownerId).stream().allMatch(c->!c.living.settings.defense);}catch(ReflectiveOperationException error){throw new RuntimeException(error);} });
+                context.clickScreenButton("markai.hub.tab.chat");
+                context.waitFor(client->ClientCompanionState.bool(MarkAIClient.STATE.group(),"can_chat",false));
+                pace(context);context.clickScreenButton("markai.ui.send");connection.waitForServerboundPackets();
+                context.waitFor(client->groupCalls.size()==1 && MarkAIClient.STATE.groupMessages().toString().contains("Всем привет, как настроение?"));
+                context.takeScreenshot("markai-group-chat-pending");
+                context.getInput().typeChars("Следующий общий вопрос");
+                context.runOnClient(client->{client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_RETURN,0,0));check(editBox(client.gui.screen()).getValue().equals("Следующий общий вопрос"),"Busy group chat preserves the next draft");});
+                check(groupSpeaker(groupCalls.get(0)).equals("Рекс"),"Shared chat starts with the roster, not the selected Luna");
+                server.runOnServer(instance->groupCalls.get(0).reply().complete(new OllamaClient.Reply("follow","Луна, я рядом.")));
+                context.waitFor(client->groupCalls.size()==2);
+                check(groupSpeaker(groupCalls.get(1)).equals("Луна") && groupCalls.get(1).history().toString().contains("Рекс: Луна, я рядом."),"The other companion sees the labelled shared reply");
+                server.runOnServer(instance->groupCalls.get(1).reply().complete(new OllamaClient.Reply("stay","Рекс, слышу тебя.")));
+                context.waitFor(client->!ClientCompanionState.bool(MarkAIClient.STATE.group(),"thinking",true)&&MarkAIClient.STATE.groupMessages().size()==3);
+                context.waitTicks(25);check(groupCalls.size()==2,"Names in model replies cannot trigger a new round");
+                server.runOnServer(instance->{try {var owned=TestCompanions.registry(mod).owned(ownerId);
+                    check(owned.stream().allMatch(c->c.memory.history().equals(privateHistory.get().get(c.id))),"Shared dialogue does not leak into personal history");
+                    check(owned.stream().allMatch(c->c.following),"Group speech cannot apply proposed follow/stay actions");
+                    check(TestCompanions.selected(mod,ownerId).id.equals(secondId.get()),"Shared chat never changes selection");
+                }catch(ReflectiveOperationException error){throw new RuntimeException(error);}});
+                context.takeScreenshot("markai-group-chat-complete");
+                context.clickScreenButton("markai.hub.tab.settings");
+                pace(context);clickMatching(context,text("markai.hub.setting.mutual_replies"),true);connection.waitForServerboundPackets();
+                context.waitFor(client->ClientCompanionState.bool(MarkAIClient.STATE.group(),"mutual_replies",false));
+                context.clickScreenButton("markai.hub.tab.chat");
+                context.waitFor(client->ClientCompanionState.bool(MarkAIClient.STATE.group(),"can_chat",false));
+                context.runOnClient(client->editBox(client.gui.screen()).setValue("Рекс, как тебе прогулка?"));
+                pace(context);context.clickScreenButton("markai.ui.send");
+                connection.waitForServerboundPackets();context.waitFor(client->groupCalls.size()==3);
+                check(groupSpeaker(groupCalls.get(2)).equals("Рекс"),"Shared chat routes an actual name to Rex while Luna stays selected");
+                server.runOnServer(instance->groupCalls.get(2).reply().complete(new OllamaClient.Reply("say","Луна, как тебе дорожка?")));
+                context.waitFor(client->groupCalls.size()==4);
+                var peerContext=com.google.gson.JsonParser.parseString(groupCalls.get(3).observation()).getAsJsonObject();
+                check(peerContext.get("reply_to").getAsString().equals("Рекс")&&peerContext.get("group_topic").getAsString().equals("Рекс, как тебе прогулка?")
+                    &&groupCalls.get(3).question().contains("Рекс: Луна, как тебе дорожка?"),"Peer replies preserve the named speaker and the player's original topic");
+                server.runOnServer(instance->groupCalls.get(3).reply().complete(new OllamaClient.Reply("say","Рекс, отличная дорога, ты доволен?")));
+                context.waitFor(client->groupCalls.size()==5);
+                server.runOnServer(instance->groupCalls.get(4).reply().complete(new OllamaClient.Reply("say","Луна, всё хорошо, побуду рядом.")));
+                context.waitFor(client->!ClientCompanionState.bool(MarkAIClient.STATE.group(),"thinking",true));context.waitTicks(25);
+                check(groupCalls.size()==5,"A conversation ends naturally when no companion asks another named question");
+                closeWithEscape(context);
+                context.getInput().pressKey(KeyMapping.get("key.markai.dialogue"));context.waitForScreen(CompanionScreen.class);
+                context.waitFor(client->MarkAIClient.STATE.bool("can_chat",false));
+                context.getInput().typeChars("Рекс, что думаешь?");pace(context);context.clickScreenButton("markai.ui.send");connection.waitForServerboundPackets();
+                context.waitFor(client->groupCalls.size()==6);
+                check(groupSpeaker(groupCalls.get(5)).equals("Луна") && !groupCalls.get(5).observation().contains("\"conversation_mode\":\"group\""),"A name in private chat never redirects to a different companion or channel");
+                server.runOnServer(instance->groupCalls.get(5).reply().complete(new OllamaClient.Reply("say","Я слушаю, хозяин.")));
+                context.waitFor(client->MarkAIClient.STATE.messages().toString().contains("Я слушаю, хозяин."));
+                context.runOnClient(client->check(!MarkAIClient.STATE.groupMessages().toString().contains("Рекс, что думаешь?"),"Private text never enters shared history"));
+                closeWithEscape(context);
+                context.getInput().pressKey(KeyMapping.get("key.markai.hub"));context.waitForScreen(CompanionHubScreen.class);
+                context.clickScreenButton("markai.hub.tab.chat");context.waitFor(client->ClientCompanionState.bool(MarkAIClient.STATE.group(),"can_chat",false));
+                context.getInput().typeChars("Обсудим ещё что-нибудь.");pace(context);context.clickScreenButton("markai.ui.send");connection.waitForServerboundPackets();
+                context.waitFor(client->groupCalls.size()==7 && ClientCompanionState.bool(MarkAIClient.STATE.group(),"thinking",false));
+                pace(context);context.clickScreenButton("markai.ui.cancel");connection.waitForServerboundPackets();
+                context.waitFor(client->groupCalls.get(6).reply().isCancelled()&&!ClientCompanionState.bool(MarkAIClient.STATE.group(),"thinking",true));
+                context.waitTicks(15);check(groupCalls.size()==7,"Cancel stops the provider and the remaining shared queue");
+                context.waitFor(client->ClientCompanionState.bool(MarkAIClient.STATE.group(),"can_chat",false));
+                context.getInput().typeChars("Поговорите о прогулке.");pace(context);context.clickScreenButton("markai.ui.send");connection.waitForServerboundPackets();
+                for(int i=0;i<10;i++) {
+                    int index=7+i;context.waitFor(client->groupCalls.size()==index+1);
+                    String recipient=groupSpeaker(groupCalls.get(index)).equals("Рекс")?"Луна":"Рекс";
+                    int sequence=i;
+                    server.runOnServer(instance->groupCalls.get(index).reply().complete(new OllamaClient.Reply("say",recipient+", вопрос "+sequence+": как твои дела?")));
+                }
+                context.waitFor(client->!ClientCompanionState.bool(MarkAIClient.STATE.group(),"thinking",true));context.waitTicks(30);
+                check(groupCalls.size()==17,"Even an endless sequence of named questions stops at ten companion messages total");
+                context.runOnClient(client->{
+                    var messages=MarkAIClient.STATE.groupMessages();String lastRound=messages.get(messages.size()-1).getAsJsonObject().get("roundId").getAsString();
+                    int replies=0;for(var entry:messages) if(entry.getAsJsonObject().get("roundId").getAsString().equals(lastRound)
+                        &&ClientCompanionState.string(entry.getAsJsonObject(),"role","").equals("assistant")) replies++;
+                    check(replies==10&&ClientCompanionState.string(MarkAIClient.STATE.group(),"status","").contains("10"),"The shared transcript contains exactly ten companion replies and reports its limit");
+                });
+                context.takeScreenshot("markai-group-chat-ten-message-limit");
+                context.clickScreenButton("markai.hub.tab.settings");
+                pace(context);clickMatching(context,text("markai.hub.setting.group_enabled")+": ",true);connection.waitForServerboundPackets();
+                context.waitFor(client->!ClientCompanionState.bool(MarkAIClient.STATE.group(),"enabled",true));
+                context.runOnClient(client->check(!ClientCompanionState.bool(MarkAIClient.STATE.group(),"can_chat",true),"The shared chat preference is a real on/off control, not a mixed companion setting"));
+                pace(context);clickMatching(context,text("markai.hub.setting.group_enabled")+": ",true);connection.waitForServerboundPackets();
+                context.waitFor(client->ClientCompanionState.bool(MarkAIClient.STATE.group(),"enabled",false));
+                context.waitFor(client->ClientCompanionState.bool(MarkAIClient.STATE.group(),"can_chat",false));
+                closeWithEscape(context);
+                context.getInput().pressKey(KeyMapping.get("key.chat"));context.waitForScreen(net.minecraft.client.gui.screens.ChatScreen.class);
+                context.getInput().typeChars("Рекс, ответишь?");context.runOnClient(client->client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_RETURN,0,0)));
+                connection.waitForServerboundPackets();context.waitTicks(25);
+                check(groupCalls.size()==17,"Vanilla Minecraft chat cannot activate companion names outside the shared tab");
             } finally {
                 try {
                     restoreWindow(context, originalWindow);
@@ -242,10 +448,18 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                 "The no-server error must not be replaced by a sent notice");
             MarkAIClient.STATE.clear();
         });
+        writeHubResult(true,groupCalls.size(),windowChecks.size());
     }
 
     private record WindowState(boolean fullscreen, int guiScale, int logicalWidth, int logicalHeight,
                                int framebufferWidth, int framebufferHeight, int nativeWidth, int nativeHeight) {}
+    private record GroupCall(String observation,String question,List<OllamaClient.ChatMessage> history,CompletableFuture<OllamaClient.Reply> reply) {}
+    private static String groupSpeaker(GroupCall call) { return com.google.gson.JsonParser.parseString(call.observation()).getAsJsonObject().getAsJsonObject("companion").get("name").getAsString(); }
+    private static void writeHubResult(boolean completed,int calls,int layouts) {
+        try { Files.writeString(FabricLoader.getInstance().getGameDir().resolve("group-hub-client-result.json"),
+            new GsonBuilder().setPrettyPrinting().create().toJson(Map.of("completed",completed,"controlled_provider_calls",calls,"layout_checks",layouts,"max_companion_replies",10)),StandardCharsets.UTF_8);
+        } catch(java.io.IOException error) { throw new RuntimeException(error); }
+    }
 
     private static boolean nativeFullscreen(Window window) {
         try {
@@ -306,7 +520,7 @@ public final class ClientUiGameTest implements FabricClientGameTest {
     private static void assertLayout(ClientGameTestContext context, List<Map<String, Object>> checks, String stage) {
         context.runOnClient(client -> {
             var screen = client.gui.screen();
-            check(screen instanceof CompanionScreen, "Companion screen expected at " + stage);
+            check(screen instanceof CompanionScreen || screen instanceof CompanionHubScreen, "Companion screen expected at " + stage);
             var widgets = screen.children().stream().filter(widget -> widget instanceof Button || widget instanceof EditBox)
                 .map(widget -> (AbstractWidget) widget).filter(widget -> widget.visible).toList();
             for (int i = 0; i < widgets.size(); i++) {
@@ -423,6 +637,15 @@ public final class ClientUiGameTest implements FabricClientGameTest {
             .findFirst().orElseThrow().getMessage().getString());
         context.clickScreenButton(label);
     }
+    private static long messageCount(String role, String text) {
+        long count = 0;
+        for (var element : MarkAIClient.STATE.messages()) if (element.isJsonObject()) {
+            var message = element.getAsJsonObject();
+            if (ClientCompanionState.string(message, "role", "").equals(role)
+                    && ClientCompanionState.string(message, "text", "").equals(text)) count++;
+        }
+        return count;
+    }
     private static String text(String key) { return net.minecraft.network.chat.Component.translatable(key).getString(); }
     private static Wolf wolf(ServerPlayer owner) {
         return owner.level().getEntitiesOfClass(Wolf.class, owner.getBoundingBox().inflate(16)).stream()
@@ -431,6 +654,10 @@ public final class ClientUiGameTest implements FabricClientGameTest {
     private static MarkAIMod mod() {
         return (MarkAIMod) FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream()
             .filter(value -> value instanceof MarkAIMod).findFirst().orElseThrow();
+    }
+    private static boolean allFollowing(MarkAIMod mod, UUID owner, boolean following) {
+        try { return TestCompanions.registry(mod).owned(owner).stream().allMatch(c -> c.following == following); }
+        catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
     }
     private static Field field(Class<?> owner, String name) {
         try { Field field = owner.getDeclaredField(name); field.setAccessible(true); return field; }

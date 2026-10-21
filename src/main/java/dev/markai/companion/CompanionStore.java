@@ -40,7 +40,8 @@ public final class CompanionStore<T> {
     private static final Gson JSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
     private final Class<T> recordType;
 
-    public record Snapshot<T>(List<T> companions, Map<UUID, UUID> selected, boolean legacy) {
+    public record Snapshot<T>(List<T> companions, Map<UUID, UUID> selected, Map<UUID, GroupChatState> groups, boolean legacy) {
+        public Snapshot(List<T> companions, Map<UUID, UUID> selected, boolean legacy) { this(companions, selected, Map.of(), legacy); }
         public Snapshot {
             if (companions == null || selected == null || companions.size() > MAX_RECORDS)
                 throw new IllegalArgumentException("Invalid companion snapshot");
@@ -53,6 +54,8 @@ public final class CompanionStore<T> {
             }
             if (copy.size() > MAX_RECORDS) throw new IllegalArgumentException("Too many selections");
             selected = Collections.unmodifiableMap(copy);
+            if (groups == null || groups.size() > MAX_RECORDS) throw new IllegalArgumentException("Invalid owner groups");
+            groups = Map.copyOf(groups);
         }
     }
 
@@ -68,6 +71,9 @@ public final class CompanionStore<T> {
     public void write(Path path, Collection<T> companions, Map<UUID, UUID> selected) throws IOException {
         write(path, new Snapshot<>(new ArrayList<>(companions), selected, false));
     }
+    public void write(Path path, Collection<T> companions, Map<UUID, UUID> selected, Map<UUID, GroupChatState> groups) throws IOException {
+        write(path, new Snapshot<>(new ArrayList<>(companions), selected, groups, false));
+    }
 
     public void write(Path path, Snapshot<T> snapshot) throws IOException {
         JsonObject root = new JsonObject();
@@ -78,6 +84,9 @@ public final class CompanionStore<T> {
         JsonObject selected = new JsonObject();
         for (var entry : snapshot.selected().entrySet()) selected.addProperty(entry.getKey().toString(), entry.getValue().toString());
         root.add("selected", selected);
+        JsonObject groups = new JsonObject();
+        for (var entry : snapshot.groups().entrySet()) groups.add(entry.getKey().toString(), JSON.toJsonTree(entry.getValue()));
+        root.add("groups", groups);
         byte[] output = (JSON.toJson(root) + "\n").getBytes(StandardCharsets.UTF_8);
         if (output.length > MAX_BYTES) throw new IOException("Companion store exceeds byte limit");
 
@@ -151,6 +160,7 @@ public final class CompanionStore<T> {
             boolean legacy = root.isJsonArray();
             JsonArray records;
             Map<UUID, UUID> selections = new LinkedHashMap<>();
+            Map<UUID, GroupChatState> groups = new LinkedHashMap<>();
             if (legacy) records = root.getAsJsonArray();
             else {
                 if (!root.isJsonObject()) throw new IOException("Companion store must be an object or legacy array");
@@ -170,6 +180,15 @@ public final class CompanionStore<T> {
                     UUID id = parseUuid(entry.getValue().getAsString());
                     if (selections.putIfAbsent(owner, id) != null) throw new IOException("Duplicate selection owner");
                 }
+                if (object.has("groups")) {
+                    if (!object.get("groups").isJsonObject()) throw new IOException("Invalid owner groups");
+                    for (var entry : object.getAsJsonObject("groups").entrySet()) {
+                        if (!entry.getValue().isJsonObject()) throw new IOException("Invalid group state");
+                        GroupChatState state = JSON.fromJson(entry.getValue(), GroupChatState.class);
+                        if (state == null || groups.putIfAbsent(parseUuid(entry.getKey()), state) != null)
+                            throw new IOException("Invalid group owner");
+                    }
+                }
             }
             if (records.size() > MAX_RECORDS || selections.size() > MAX_RECORDS)
                 throw new IOException("Companion store exceeds record limit");
@@ -180,7 +199,7 @@ public final class CompanionStore<T> {
                 if (companion == null) throw new IOException("Null companion record");
                 companions.add(companion);
             }
-            return new Snapshot<>(companions, selections, legacy);
+            return new Snapshot<>(companions, selections, groups, legacy);
         } catch (IOException error) {
             throw error;
         } catch (RuntimeException error) {

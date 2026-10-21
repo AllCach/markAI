@@ -77,6 +77,7 @@ check.dependsOn companionRegistryTest
  'groundedFactsTest': 'dev.markai.ai.GroundedFactsTest',
  'ambientConversationTest': 'dev.markai.ai.AmbientConversationTest',
  'networkRulesTest': 'dev.markai.network.NetworkRulesTest',
+ 'groupDialogueTest': 'dev.markai.companion.GroupDialogueRoundTest',
  'llmProviderTest': 'dev.markai.ai.LlmProviderTest',
  'repetitionGuardTest': 'dev.markai.ai.RepetitionGuardLlmProviderTest',
  'memorySystemTest': 'dev.markai.memory.MemorySystemTest'].each { taskName, testMain ->
@@ -97,6 +98,11 @@ tasks.register('dialogueLoopQualityTest', JavaExec) {
     dependsOn aiChecksClasses
     classpath = sourceSets.aiChecks.runtimeClasspath
     mainClass = 'dev.markai.ai.DialogueLoopQualityTest'
+}
+tasks.register('groupDialogueQualityTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.ai.GroupDialogueQualityTest'
 }
 tasks.register('memoryQualityTest', JavaExec) {
     dependsOn aiChecksClasses

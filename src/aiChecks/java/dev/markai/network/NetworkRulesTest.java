@@ -48,6 +48,13 @@ public final class NetworkRulesTest {
         check(!NetworkRules.setting("name", " ") && !NetworkRules.setting("name", "a".repeat(33)) && !NetworkRules.setting("name", "bad\nname"), "Name bounds");
         check(!NetworkRules.setting("ollamaUrl", "https://example.com") && !NetworkRules.setting("apiKey", "secret"), "Client must not edit endpoint or credentials");
         check(!NetworkRules.setting(null, "true") && !NetworkRules.setting("hud", null), "Null settings");
+        for (String key : new String[]{"hud","defense","autochat"}) check(NetworkRules.setting("all:"+key,"true"),"Allowed bulk preference "+key);
+        check(NetworkRules.setting("all:follow_distance","16"),"Bulk distance");
+        check(!NetworkRules.setting("all:follow_distance","NaN"),"Invalid bulk distance");
+        for (String key : new String[]{"all:name","all:trait_trust","all:all:hud","all:apiKey"}) check(!NetworkRules.setting(key,"true"),"Personal or injected bulk preference rejected");
+        check(NetworkRules.setting("group_enabled","false")&&NetworkRules.setting("mutual_replies","true"),"Group boolean preferences");
+        check(!NetworkRules.setting("mutual_replies","100"),"Reply budget cannot be supplied by a client");
+        check(NetworkRules.action("group_cancel")&&!NetworkRules.action("all:group_cancel"),"Group conversation has its own owner-scoped cancellation");
         System.out.println("NetworkRulesTest: " + checks + " checks passed");
     }
     private static void check(boolean condition, String description) {

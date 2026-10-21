@@ -21,7 +21,7 @@ import net.minecraft.world.entity.animal.wolf.Wolf;
 @Environment(EnvType.CLIENT)
 public final class MarkAIClient implements ClientModInitializer {
     public static final ClientCompanionState STATE = new ClientCompanionState();
-    private static KeyMapping open, dialogue, quick;
+    private static KeyMapping open, dialogue, quick, hub;
     private static final java.util.Map<KeyMapping, String> commandKeys = new java.util.LinkedHashMap<>();
     private static int ticks;
     private static Wolf preview;
@@ -33,6 +33,7 @@ public final class MarkAIClient implements ClientModInitializer {
         open = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.markai.open", InputConstants.KEY_G, category));
         dialogue = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.markai.dialogue", InputConstants.KEY_H, category));
         quick = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.markai.quick", InputConstants.KEY_V, category));
+        hub = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.markai.hub", InputConstants.KEY_U, category));
         commandKey("attack", InputConstants.KEY_R, category);
         commandKey("collect", InputConstants.KEY_J, category);
         commandKey("stop", InputConstants.KEY_K, category);
@@ -55,6 +56,7 @@ public final class MarkAIClient implements ClientModInitializer {
             connected = true;
             while (open.consumeClick()) if (client.gui.screen() == null) show(CompanionScreen.Tab.PROFILE, false);
             while (dialogue.consumeClick()) if (client.gui.screen() == null) show(CompanionScreen.Tab.DIALOGUE, false);
+            while (hub.consumeClick()) if (client.gui.screen() == null) showHub();
             while (quick.consumeClick()) {
                 if (client.gui.screen() != null) continue;
                 // Reuse the existing V binding rather than reserving Q/E or hotbar keys.
@@ -69,7 +71,7 @@ public final class MarkAIClient implements ClientModInitializer {
                     else action(binding.getValue());
                 }
             }
-            if (++ticks % 20 == 0 && available() && (client.gui.screen() instanceof CompanionScreen
+            if (++ticks % 20 == 0 && available() && (client.gui.screen() instanceof CompanionScreen || client.gui.screen() instanceof CompanionHubScreen
                     || ClientCompanionState.bool(STATE.settings(), "hud", true) || !STATE.received())) {
                 request(); refreshPreview(client);
             }
@@ -101,6 +103,7 @@ public final class MarkAIClient implements ClientModInitializer {
         if (available()) ClientPlayNetworking.send(new CompanionNetwork.Request());
         else STATE.notice("error", Component.translatable("markai.ui.no_server").getString());
     }
+    public static void showHub() { Minecraft.getInstance().gui.setScreen(new CompanionHubScreen()); request(); }
     public static void action(String action) { if (NetworkRules.action(action)) send(new CompanionNetwork.Action(action)); }
 
     /** Ctrl applies one supported command to the entire owner roster, on the server. */
@@ -148,6 +151,9 @@ public final class MarkAIClient implements ClientModInitializer {
         return false;
     }
     public static void cancel() { send(new CompanionNetwork.Cancel()); }
+    public static boolean groupChat(String message) {
+        return NetworkRules.chat(message) && send(new CompanionNetwork.GroupChat(message));
+    }
     public static void deleteMemory(String id) { if (NetworkRules.memoryId(id)) send(new CompanionNetwork.MemoryDelete(id)); }
     public static void setting(String key, String value) { if (NetworkRules.setting(key, value)) send(new CompanionNetwork.Setting(key, value)); }
     private static boolean send(CustomPacketPayload payload) {

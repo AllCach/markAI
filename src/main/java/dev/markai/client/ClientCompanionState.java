@@ -55,6 +55,9 @@ public final class ClientCompanionState {
     public JsonArray messages() { return array(state, "messages"); }
     public JsonArray memories() { return array(state, "memories"); }
     public JsonArray companions() { return array(state, "companions"); }
+    public JsonArray groupMessages() { return array(state, "group_messages"); }
+    public JsonObject group() { return object(state, "group"); }
+    public JsonObject commonSettings() { return object(state, "common_settings"); }
     public String companionId() { return companionId(state); }
     private static String companionId(JsonObject source) {
         String id = string(source, "companion_id", "");

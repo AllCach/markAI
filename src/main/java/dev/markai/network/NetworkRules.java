@@ -7,7 +7,7 @@ import java.util.UUID;
 public final class NetworkRules {
     private static final Set<String> ACTIONS = Set.of("spawn", "status", "follow", "stay", "come", "rest", "wander",
         "home", "sethome", "investigate", "summon", "dismiss", "inventory", "debug", "brain", "mood", "memory", "memory_prev", "memory_next", "cancel",
-        "tame", "attack", "collect", "stop");
+        "tame", "attack", "collect", "stop", "group_cancel");
     // Ctrl modifies only commands that make sense for multiple living companions.
     private static final Set<String> GROUP_ACTIONS = Set.of(
         "attack", "collect", "stop", "come", "stay", "follow",
@@ -40,6 +40,9 @@ public final class NetworkRules {
     }
     public static boolean setting(String key, String value) {
         if (key == null || value == null || key.length() > 32 || value.length() > 64) return false;
+        if (key.startsWith("all:")) return Set.of("hud", "defense", "autochat", "follow_distance").contains(key.substring(4))
+            && setting(key.substring(4), value);
+        if (Set.of("group_enabled", "mutual_replies").contains(key)) return value.equals("true") || value.equals("false");
         if (Set.of("hud", "defense", "autochat").contains(key)) return value.equals("true") || value.equals("false");
         if (key.equals("name")) return !value.isBlank() && value.length() <= 32 && value.codePoints().noneMatch(Character::isISOControl);
         if (key.equals("follow_distance")) return number(value, 2, 16);

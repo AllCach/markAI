@@ -31,6 +31,14 @@ public final class OllamaClientTest {
     }
 
     private static void parsingChecks() throws Exception {
+        check("shared dialogue has its own persona and one current request", () -> {
+            String question="Марк, что думаешь?";
+            var messages=OllamaClient.dialogueMessages("{\"conversation_mode\":\"group\",\"group_turn\":\"player_reply\"}",question,
+                List.of(new OllamaClient.ChatMessage("user","Walk: Я рядом.")));
+            String system=messages.get(0).getAsJsonObject().get("content").getAsString();
+            require(system.contains("ОБЩИЙ чат")&&system.contains("action строго say"),"Group speech has no movement authority");
+            require(!system.contains(question)&&messages.size()==3,"The current user text occurs only once after the labelled peer history");
+        });
         check("manual current turn is a single user message after completed history", () -> {
             String current = "UNIQUE_CURRENT_TURN: а с чем? у нас первый день хардкора";
             String previous = "{\"action\":\"say\",\"say\":\"Ты снова решил поздравить меня?\"}";
