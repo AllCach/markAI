@@ -8,6 +8,15 @@ public final class NetworkRulesTest {
                 "spawn", "summon", "dismiss", "investigate", "memory_prev", "memory_next", "cancel", "tame", "attack", "collect", "stop"}) {
             check(NetworkRules.action(action), "Known action " + action);
         }
+        for (String action : new String[]{"attack", "collect", "stop", "come", "stay", "follow", "rest", "wander", "home", "investigate"}) {
+            check(NetworkRules.groupAction(action) && NetworkRules.action("all:" + action), "Allowed group action: " + action);
+        }
+        for (String action : new String[]{"spawn", "respawn", "tame", "inventory", "status", "forget", "cancel", "sethome",
+                "summon", "dismiss", "memory", "deleteMemory", "train", "", "ATTACK", "../attack", "attack\nkill @e"}) {
+            check(!NetworkRules.groupAction(action) && !NetworkRules.action("all:" + action), "Rejected group action: " + action);
+        }
+        check(!NetworkRules.action("all:all:attack") && !NetworkRules.action("all:") && !NetworkRules.groupAction(null),
+            "Nested and empty group requests rejected");
         for (String action : new String[]{"", " follow", "FOLLOW", "op", "kill @e", "follow\nkill @e", "/mark follow", "execute run op player"}) {
             check(!NetworkRules.action(action), "Reject arbitrary command " + action);
         }
