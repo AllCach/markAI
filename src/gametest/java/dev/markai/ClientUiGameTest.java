@@ -438,7 +438,10 @@ public final class ClientUiGameTest implements FabricClientGameTest {
     }
     private static void resetCooldown(MarkAIMod mod, UUID owner) {
         try {
-            Object session = ((Map<?, ?>) field(MarkAIMod.class, "aiSessions").get(mod)).get(owner);
+            MarkAIMod.Companion selected = TestCompanions.selected(mod, owner);
+            if (selected == null) throw new IllegalStateException("Owner has no selected companion");
+            Object session = ((Map<?, ?>) field(MarkAIMod.class, "aiSessions").get(mod)).get(selected.id);
+            if (session == null) throw new IllegalStateException("Selected companion has no AI session: " + selected.id);
             field(session.getClass(), "nextRequest").setLong(session, 0);
         } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
     }
