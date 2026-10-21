@@ -13,7 +13,8 @@
                                                 "dev.markai.LivingCompanionGameTest",
                                                 "dev.markai.CompanionReviewGameTest",
                                                 "dev.markai.WalkOrdersGameTest",
-                                                "dev.markai.MultiCompanionGameTest"
+                                                "dev.markai.MultiCompanionGameTest",
+                                                "dev.markai.VocalFallbackGameTest"
                                             ],
                         "fabric-client-gametest":  [
                                                        "dev.markai.ClientUiGameTest"

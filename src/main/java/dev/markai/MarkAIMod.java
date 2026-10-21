@@ -143,6 +143,7 @@ public final class MarkAIMod implements ModInitializer {
         DogTraining training = new DogTraining();
         String lastObservedPlace;
         transient long nextMessage;
+        transient long nextFallbackVocalAt;
         transient long nextLessonAt, nextTrickAt;
         transient TrickTask trick;
         transient boolean ownerUnavailable;
@@ -883,6 +884,20 @@ public final class MarkAIMod implements ModInitializer {
         wolf.playSound(wolf.get(DataComponents.WOLF_SOUND_VARIANT).value().adultSounds().ambientSound().value(), 0.8F, 1.0F);
     }
 
+    /** Native wolf vocalization for an addressed message when language generation is unavailable. */
+    private boolean fallbackVocal(Companion companion, Wolf wolf, ServerPlayer owner) {
+        if (companion == null || wolf == null || owner == null || companion.owner == null
+                || !companion.owner.equals(owner.getUUID()) || companion.dead || companion.dismissed
+                || !wolf.isAlive() || !wolf.isOwnedBy(owner) || wolf.level() != owner.level()
+                || wolf.distanceToSqr(owner) > 32 * 32) return false;
+        long now = wolf.level().getGameTime();
+        if (now < companion.nextFallbackVocalAt) return false;
+        companion.nextFallbackVocalAt = now + 60;
+        wolf.getLookControl().setLookAt(owner, 30, 30);
+        bark(wolf);
+        return true;
+    }
+
     private int performTrick(ServerPlayer owner, Trick trick) {
         Companion c = companions.selected(owner.getUUID());
         Wolf wolf = c == null ? null : find(c);
@@ -1218,6 +1233,19 @@ public final class MarkAIMod implements ModInitializer {
         List<UUID> named = GroupDialogueRound.addressed(message, members);
         List<Companion> eligible = companions.owned(ownerId).stream().filter(c -> groupEligible(c, owner)).toList();
         List<Companion> addressed = eligible.stream().filter(c -> named.isEmpty() || named.contains(c.id)).toList();
+        if (addressed.isEmpty()) {
+            int vocals = 0;
+            for (Companion c : companions.owned(ownerId)) {
+                if (named.isEmpty() || named.contains(c.id)) {
+                    Wolf wolf = find(c);
+                    if (fallbackVocal(c, wolf, owner)) vocals++;
+                }
+            }
+            if (vocals > 0) {
+                CompanionNetwork.notice(owner, "status", "ИИ выключен. Компаньоны отозвались голосом; для диалога включи ИИ в общих настройках.");
+                return 0;
+            }
+        }
         if (addressed.isEmpty()) { CompanionNetwork.notice(owner, "error", "Позванный компаньон должен быть жив, с включённым ИИ и рядом в пределах 32 блоков."); return 0; }
         String orderText = GroupDialogueRound.withoutAddress(message, members);
         String command = WolfOrderIntent.parse(orderText);
@@ -1243,9 +1271,20 @@ public final class MarkAIMod implements ModInitializer {
             AISession session = aiSessions.get(c.id);
             if (session != null && session.pendingAutomatic) { invalidate(session); session.nextRequest = 0; }
         }
-        if (ollama == null || !groupRuns.isEmpty() || aiSessions.values().stream().anyMatch(session -> session.pending != null)
+        if (ollama == null) {
+            int vocals = 0;
+            for (Companion c : addressed) {
+                Wolf wolf = find(c);
+                if (wolf != null && wolf.level() == owner.level() && wolf.distanceToSqr(owner) <= 32 * 32
+                        && fallbackVocal(c, wolf, owner)) vocals++;
+            }
+            if (vocals > 0) CompanionNetwork.notice(owner, "status", "ИИ недоступен. Компаньоны отозвались голосом; для диалога проверь config/markai.json.");
+            else CompanionNetwork.notice(owner, "error", "ИИ недоступен. Проверь config/markai.json.");
+            return 0;
+        }
+        if (!groupRuns.isEmpty() || aiSessions.values().stream().anyMatch(session -> session.pending != null)
                 || System.currentTimeMillis() < groupNextRequest.getOrDefault(ownerId, 0L)) {
-            CompanionNetwork.notice(owner, "error", ollama == null ? "ИИ недоступен. Проверь config/markai.json." : "Дождись ответа или останови текущий разговор."); return 0;
+            CompanionNetwork.notice(owner, "error", "Дождись ответа или останови текущий разговор."); return 0;
         }
         GroupDialogueRound round = new GroupDialogueRound(message, addressed.stream().map(c -> c.id).toList(),
             eligible.stream().map(c -> c.id).toList(), state.mutualReplies());
@@ -1467,8 +1506,14 @@ public final class MarkAIMod implements ModInitializer {
             save(); return performed;
         }
         if (!session.enabled || ollama == null) {
-            session.error = "ИИ недоступен. /mark ai on; настройки: config/markai.json.";
-            if (!automatic) { owner.sendSystemMessage(Component.literal(session.error)); CompanionNetwork.notice(owner, "error", session.error); } return 0;
+            String reason = !session.enabled ? "ИИ выключен" : "модель недоступна";
+            session.error = reason + ". Для ответа словами включи ИИ командой /mark ai on и проверь config/markai.json.";
+            if (!automatic && fallbackVocal(c, wolf, owner)) {
+                String feedback = c.living.name + " гавкнул: " + reason + ". Для ответа словами включи ИИ командой /mark ai on и проверь config/markai.json.";
+                owner.sendSystemMessage(Component.literal(feedback));
+                CompanionNetwork.notice(owner, "status", feedback);
+            }
+            return 0;
         }
         long nowMillis = System.currentTimeMillis();
         if (!groupRuns.isEmpty() || session.pending != null || aiSessions.values().stream().anyMatch(s -> s.pending != null)
@@ -1531,11 +1576,14 @@ public final class MarkAIMod implements ModInitializer {
                         if (automatic) { journal.finish(requestId, "failed", null, null, error.toString()); return; }
                         Throwable cause = error;
                         while (cause instanceof java.util.concurrent.CompletionException && cause.getCause() != null) cause = cause.getCause();
-                        String fallback = cause instanceof dev.markai.ai.RepetitionGuardLlmProvider.RepeatedReplyException
+                        boolean repeated = cause instanceof dev.markai.ai.RepetitionGuardLlmProvider.RepeatedReplyException;
+                        String fallback = repeated
                             ? "Не получилось сформулировать новый ответ. Попробуй ещё раз."
                             : "Сейчас не могу ответить. Проверь подключение ИИ в config/markai.json.";
                         session.error = fallback;
-                        currentOwner.sendSystemMessage(Component.literal("<" + c.living.name + "> " + fallback));
+                        if (repeated) currentOwner.sendSystemMessage(Component.literal("<" + c.living.name + "> " + fallback));
+                        else if (fallbackVocal(c, current, currentOwner))
+                            currentOwner.sendSystemMessage(Component.literal(c.living.name + " гавкнул. " + fallback));
                         if (companions.selected(c.owner) == c) CompanionNetwork.notice(currentOwner, "error", fallback);
                         journal.finish(requestId, "failed", null, new OllamaClient.Reply("say", fallback), error.toString());
                         return;
