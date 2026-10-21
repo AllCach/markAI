@@ -904,12 +904,15 @@ public final class MarkAIMod implements ModInitializer {
         chickenRuntime.configure(chicken, c.living.name);
         remember(c, chicken, level);
         ServerPlayer owner = server.getPlayerList().getPlayer(c.owner);
-        if (owner == null || !owner.isAlive() || owner.level() != level || !c.following || c.dismissed) {
+        if (owner == null || !owner.isAlive() || owner.level() != level) {
             chickenRuntime.stop(chicken);
             c.action = "IDLE";
             return;
         }
-        if (chicken.distanceToSqr(owner) > 9.0) {
+        if (!c.following || c.dismissed) {
+            chickenRuntime.stop(chicken);
+            c.action = "IDLE";
+        } else if (chicken.distanceToSqr(owner) > 9.0) {
             chickenRuntime.follow(chicken, owner);
             c.action = "FOLLOW";
         } else {
@@ -917,7 +920,7 @@ public final class MarkAIMod implements ModInitializer {
             c.action = "IDLE";
         }
         long now = level.getGameTime();
-        if (companions.selected(c.owner) == c && c.living.settings.autochat && aiConfig != null
+        if (!c.dismissed && companions.selected(c.owner) == c && c.living.settings.autochat && aiConfig != null
                 && aiConfig.automaticConversationSeconds > 0 && now >= c.nextAutomaticConversation
                 && chicken.distanceTo(owner) <= 12) {
             c.nextAutomaticConversation = now + 20;
