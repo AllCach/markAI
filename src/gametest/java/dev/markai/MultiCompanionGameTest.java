@@ -56,6 +56,13 @@ public final class MultiCompanionGameTest {
         helper.assertTrue(selectedView.get("companion_id").getAsString().equals(second.id.toString())
             && selectedView.getAsJsonArray("companions").size() == 2,
             "Owner UI exposes both companions and the active selection");
+        JsonObject neighborCard = selectedView.getAsJsonArray("companions").get(0).getAsJsonObject();
+        helper.assertTrue(neighborCard.get("id").getAsString().equals(first.id.toString())
+                && neighborCard.get("entity_uuid").getAsString().equals(first.entity.toString())
+                && neighborCard.get("health").getAsDouble() > 0
+                && neighborCard.get("max_health").getAsDouble() >= firstWolf.getMaxHealth()
+                && neighborCard.has("activity"),
+            "Neighbor preview is populated with real entity, health and activity data");
         helper.assertTrue(!selectedView.toString().contains("alpha_companion_secret_2026"),
             "First companion's memory does not leak into the second companion's view");
 
