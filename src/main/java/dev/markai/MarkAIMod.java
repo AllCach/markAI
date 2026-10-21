@@ -230,8 +230,15 @@ public final class MarkAIMod implements ModInitializer {
                     for (Companion c : saved.companions()) {
                         if (c == null || c.owner == null || c.entity == null || c.dimension == null)
                             throw new IOException("Invalid companion state");
-                        if (c.species == null) c.species = "minecraft:wolf";
-                        if (!c.species.equals("minecraft:wolf")) throw new IOException("Unsupported companion species");
+                        if (c.species == null || c.species.isBlank()) {
+                            // Older saves did not store a species; preserve their wolf identity.
+                            c.species = CompanionSpecies.WOLF.id();
+                        }
+                        CompanionSpecies species = CompanionSpecies.fromId(c.species)
+                                .orElseThrow(() -> new IOException("Unsupported companion species: " + c.species));
+                        if (!species.runtimeSupported()) {
+                            throw new IOException("Companion species runtime is not available yet: " + c.species);
+                        }
                         if (c.memory == null) c.memory = new CompanionMemory();
                         if (c.training == null) c.training = new DogTraining();
                         if (c.living == null) c.living = new LivingState();
