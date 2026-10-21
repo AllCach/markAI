@@ -554,10 +554,10 @@ public final class MarkAIMod implements ModInitializer {
         } else if (List.of("bark", "come", "fetch").contains(command)) {
             return performTrick(owner, Trick.valueOf(command.toUpperCase(Locale.ROOT)));
         } else if (command.equals("status")) {
-            Wolf wolf = find(c);
+            LivingEntity entity = CompanionSpecies.CHICKEN.id().equals(c.species) ? findChicken(c) : find(c);
             owner.sendSystemMessage(Component.literal(c.living.name + " | owner=" + c.owner + " | entity=" + c.entity
-                + " | " + c.species + " | HP=" + (wolf == null ? "?" : wolf.getHealth())
-                + "/" + (wolf == null ? "?" : wolf.getMaxHealth()) + " | " + (c.dead ? "DEAD" : wolf == null ? "UNLOADED" : c.action)
+                + " | " + c.species + " | HP=" + (entity == null ? "?" : entity.getHealth())
+                + "/" + (entity == null ? "?" : entity.getMaxHealth()) + " | " + (c.dead ? "DEAD" : entity == null ? "UNLOADED" : c.action)
                 + " | mode=" + (c.following ? "FOLLOW" : "STAY") + " | dimension=" + c.dimension));
             owner.sendSystemMessage(Component.literal(c.training.status()));
         } else return 0;
@@ -1435,7 +1435,13 @@ public final class MarkAIMod implements ModInitializer {
             default -> { return; }
         }
         c.living.normalize();
-        Wolf wolf = find(c); if (wolf != null) { wolf.setCustomName(Component.literal(c.living.name)); if (!settings.defense) wolf.setTarget(null); }
+        if (CompanionSpecies.CHICKEN.id().equals(c.species)) {
+            Chicken chicken = findChicken(c);
+            if (chicken != null) chicken.setCustomName(Component.literal(c.living.name));
+        } else {
+            Wolf wolf = find(c);
+            if (wolf != null) { wolf.setCustomName(Component.literal(c.living.name)); if (!settings.defense) wolf.setTarget(null); }
+        }
     }
 
     private GroupChatState groupState(UUID owner) { return groupStates.getOrDefault(owner, GroupChatState.defaults()); }
@@ -1443,11 +1449,17 @@ public final class MarkAIMod implements ModInitializer {
         return companions.owned(owner.getUUID()).stream().map(c -> new GroupDialogueRound.Member(c.id, c.living.name)).toList();
     }
     private boolean groupEligible(Companion c, ServerPlayer owner) {
-        Wolf wolf = c == null ? null : find(c);
         AISession session = c == null ? null : aiSessions.get(c.id);
-        return c != null && c.owner.equals(owner.getUUID()) && !c.dead && !c.dismissed
-            && owner.isAlive() && !owner.isSpectator() && wolf != null && wolf.isAlive() && wolf.isOwnedBy(owner)
-            && wolf.level() == owner.level() && wolf.distanceToSqr(owner) <= 32 * 32 && (session == null || session.enabled);
+        if (c == null || !c.owner.equals(owner.getUUID()) || c.dead || c.dismissed
+                || !owner.isAlive() || owner.isSpectator() || (session != null && !session.enabled)) return false;
+        if (CompanionSpecies.CHICKEN.id().equals(c.species)) {
+            Chicken chicken = findChicken(c);
+            return chicken != null && chicken.isAlive() && chicken.level() == owner.level()
+                && chicken.distanceToSqr(owner) <= 32 * 32;
+        }
+        Wolf wolf = find(c);
+        return wolf != null && wolf.isAlive() && wolf.isOwnedBy(owner)
+            && wolf.level() == owner.level() && wolf.distanceToSqr(owner) <= 32 * 32;
     }
     private Map<String, Object> groupSnapshot(ServerPlayer owner) {
         GroupChatState state = groupState(owner.getUUID()); GroupRun run = groupRuns.get(owner.getUUID());
