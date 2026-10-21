@@ -1203,7 +1203,8 @@ public final class MarkAIMod implements ModInitializer {
         }
         companions.remove(owner.getUUID(), id);
         save();
-        CompanionNetwork.notice(owner, "status", companion.living.name + " убран из MarkAI. Приручённый волк остался в мире.");
+        CompanionNetwork.notice(owner, "status", companion.living.name + (chickenSpecies
+            ? " убрана из MarkAI и мира." : " убран из MarkAI. Приручённый волк остался в мире."));
     }
 
     /** A departing or dead owner may have multiple outstanding companion conversations. */
