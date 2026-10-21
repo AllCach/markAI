@@ -733,6 +733,77 @@ public final class MarkAIMod implements ModInitializer {
             case "investigate" -> "осмотреться"; default -> command;
         };
     }
+    private int spawnChicken(ServerPlayer owner, Companion selected) {
+        if (!owner.isAlive() || owner.isSpectator()) return 0;
+        boolean respawn = selected != null && selected.dead
+                && CompanionSpecies.CHICKEN.id().equals(selected.species);
+        if (respawn && findChicken(selected) != null) {
+            owner.sendSystemMessage(Component.literal("Курица-компаньон уже существует; повторный спавн запрещён."));
+            return 0;
+        }
+        if (!respawn && companions.owned(owner.getUUID()).size() >= CompanionRegistry.MAX_COMPANIONS_PER_OWNER)
+            return wolfNotice(owner, "Достигнут предел компаньонов: " + CompanionRegistry.MAX_COMPANIONS_PER_OWNER, false);
+
+        ServerLevel level = (ServerLevel) owner.level();
+        Chicken chicken = EntityTypes.CHICKEN.create(level, EntitySpawnReason.COMMAND);
+        if (chicken == null) return 0;
+        Vec3 origin = owner.position();
+        boolean freePosition = false;
+        for (int[] offset : new int[][] {
+                {1, 1}, {-1, 1}, {1, -1}, {-1, -1},
+                {2, 0}, {-2, 0}, {0, 2}, {0, -2},
+                {2, 2}, {-2, 2}, {2, -2}, {-2, -2}
+        }) {
+            chicken.setPos(origin.x + offset[0], origin.y, origin.z + offset[1]);
+            if (level.noCollision(chicken) && level.getFluidState(chicken.blockPosition()).isEmpty()) {
+                freePosition = true;
+                break;
+            }
+        }
+        if (!freePosition) {
+            owner.sendSystemMessage(Component.literal("Для курицы нужно свободное сухое место рядом с игроком."));
+            return 0;
+        }
+
+        int ownedCount = companions.owned(owner.getUUID()).size();
+        Companion previous = respawn ? selected : null;
+        Companion c = new Companion();
+        c.owner = owner.getUUID();
+        c.entity = chicken.getUUID();
+        c.id = previous == null ? UUID.randomUUID() : previous.id == null ? previous.entity : previous.id;
+        c.species = CompanionSpecies.CHICKEN.id();
+        c.living = previous == null ? LivingState.forIdentity(c.id) : previous.living;
+        if (previous == null && ownedCount > 0) c.living.name = "Марк " + (ownedCount + 1);
+        if (previous != null) {
+            c.memory = previous.memory;
+            c.training = previous.training;
+            c.following = previous.following;
+            c.dismissed = previous.dismissed;
+        }
+        c.memory.bind(c.id);
+        chicken.setCustomName(Component.literal(c.living.name));
+        chicken.setCustomNameVisible(true);
+        chicken.setPersistenceRequired();
+        chicken.setAge(0);
+        if (!level.addFreshEntity(chicken)) return 0;
+        remember(c, chicken, level);
+        companions.add(c);
+        if (!respawn) companions.select(owner.getUUID(), c.id);
+        chickenRuntime.configure(chicken, c.living.name);
+        save();
+        owner.sendSystemMessage(Component.literal(c.living.name + " создан как курица-компаньон."));
+        return 1;
+    }
+
+    private Chicken findChicken(Companion c) {
+        if (c == null || c.dead || !CompanionSpecies.CHICKEN.id().equals(c.species)) return null;
+        for (ServerLevel level : server.getAllLevels()) {
+            Entity entity = level.getEntity(c.entity);
+            if (entity instanceof Chicken chicken && chicken.isAlive()) return chicken;
+        }
+        return null;
+    }
+
     private int startWolfOrder(Companion companion, ServerPlayer owner, String command) {
         Wolf wolf = find(companion);
         if (wolf == null || !owner.isAlive() || owner.isSpectator() || wolf.level() != owner.level()
@@ -815,6 +886,27 @@ public final class MarkAIMod implements ModInitializer {
         chicken.discard();
         LOG.info("Converted companion {} to tamed wolf {} for owner {}", previousUuid, c.entity, c.owner);
         return wolf;
+    }
+
+    private void tickChicken(Companion c) {
+        Chicken chicken = findChicken(c);
+        if (chicken == null) return;
+        ServerLevel level = (ServerLevel) chicken.level();
+        chickenRuntime.configure(chicken, c.living.name);
+        remember(c, chicken, level);
+        ServerPlayer owner = server.getPlayerList().getPlayer(c.owner);
+        if (owner == null || !owner.isAlive() || owner.level() != level || !c.following || c.dismissed) {
+            chickenRuntime.stop(chicken);
+            c.action = "IDLE";
+            return;
+        }
+        if (chicken.distanceToSqr(owner) > 9.0) {
+            chickenRuntime.follow(chicken, owner);
+            c.action = "FOLLOW";
+        } else {
+            chickenRuntime.stop(chicken);
+            c.action = "IDLE";
+        }
     }
 
     private void tick(Companion c) {
