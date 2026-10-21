@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "markai-beta-test",
+  "version": "1.0.0",
+  "name": "MarkAI isolated beta acceptance tests",
+  "environment": "server",
+  "entrypoints": { "fabric-gametest": ["dev.markai.BetaAcceptanceGameTest"] },
+  "depends": { "markai": "*", "fabric-api": "*" }
+}

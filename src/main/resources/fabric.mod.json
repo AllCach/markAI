@@ -3,6 +3,12 @@
   "id": "markai",
   "version": "${version}",
   "name": "MarkAI",
+  "authors": ["AllCach"],
+  "license": "CC0-1.0",
+  "contact": {
+    "sources": "https://github.com/AllCach/markAI",
+    "issues": "https://github.com/AllCach/markAI/issues"
+  },
   "description": "Living wolf companion Mark: personality, emotions, memory, dialogue, training, inventory and native companion UI.",
   "environment": "*",
   "entrypoints": { "main": ["dev.markai.MarkAIMod"], "client": ["dev.markai.client.MarkAIClient"] },

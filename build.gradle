@@ -15,6 +15,9 @@ java {
     targetCompatibility = JavaVersion.VERSION_25
     withSourcesJar()
 }
+tasks.named('jar') {
+    from('LICENSE') { rename { 'LICENSE_markai' } }
+}
 tasks.withType(JavaCompile).configureEach {
     options.release = 25
     options.encoding = 'UTF-8'
@@ -25,6 +28,10 @@ sourceSets {
         runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
     }
     gametest {
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
+    betaTest {
         compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
         runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
     }
@@ -131,6 +138,7 @@ loom {
     mods {
         markai { sourceSet sourceSets.main }
         'markai-test' { sourceSet sourceSets.gametest }
+        'markai-beta-test' { sourceSet sourceSets.betaTest }
     }
     runs {
         gameTest {
@@ -150,5 +158,104 @@ loom {
             vmArg '-Dfabric.client.gametest.modid=markai-test'
             vmArg '-Xmx4G'
         }
+        betaGameTest {
+            server()
+            name 'MarkAI beta acceptance and soak'
+            source sourceSets.betaTest
+            runDir 'build/beta-gametest'
+            vmArg '-Dfabric-api.gametest'
+            vmArg '-Dfabric-api.gametest.report-file=reports/report.xml'
+            vmArg "-Dmarkai.beta.soakSeconds=${providers.gradleProperty('betaSoakSeconds').getOrElse('120')}"
+        }
+    }
+}
+tasks.named('runBetaGameTest') {
+    doFirst {
+        def betaBuild = layout.buildDirectory.get().asFile.canonicalFile
+        def betaRunDir = layout.buildDirectory.dir('beta-gametest').get().asFile.canonicalFile
+        if (!betaRunDir.toPath().startsWith(betaBuild.toPath()) || betaRunDir == betaBuild)
+            throw new GradleException("Refusing to reset an unexpected beta-test directory: ${betaRunDir}")
+        delete betaRunDir
+        def result = layout.buildDirectory.file('beta-gametest/beta-acceptance-result.json').get().asFile
+        result.parentFile.mkdirs()
+        result.setText('{"completed":false}\n', 'UTF-8')
+    }
+    doLast {
+        def result = layout.buildDirectory.file('beta-gametest/beta-acceptance-result.json').get().asFile
+        if (!result.isFile()) throw new GradleException("Missing beta GameTest completion record: ${result}")
+        def report = new groovy.json.JsonSlurper().parse(result)
+        int requiredSeconds = providers.gradleProperty('betaSoakSeconds').orElse('120').get().toInteger()
+        if (report.completed != true || report.soak_seconds < requiredSeconds)
+            throw new GradleException("Beta GameTest did not complete its ${requiredSeconds}s soak")
+    }
+}
+
+def betaJar = tasks.named('jar')
+def betaChecksums = tasks.register('betaChecksums') {
+    dependsOn betaJar
+    inputs.file(betaJar.flatMap { it.archiveFile })
+    def checksumFile = layout.buildDirectory.file("beta/markai-${project.version}.jar.sha256")
+    outputs.file(checksumFile)
+    doLast {
+        def artifact = betaJar.get().archiveFile.get().asFile
+        def checksum = java.security.MessageDigest.getInstance('SHA-256').digest(artifact.bytes).encodeHex()
+        def output = checksumFile.get().asFile
+        output.parentFile.mkdirs()
+        output.setText("${checksum}  ${artifact.name}\n", 'UTF-8')
+    }
+}
+tasks.register('betaDist', Zip) {
+    dependsOn 'build', betaChecksums
+    archiveFileName = "MarkAI-${project.version}-beta.zip"
+    destinationDirectory = layout.projectDirectory.dir('dist')
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    from(betaJar.flatMap { it.archiveFile })
+    from(layout.buildDirectory.file("beta/markai-${project.version}.jar.sha256"))
+    from('BETA_README.md') { rename { 'README.md' } }
+    from('LICENSE', 'CONFIGURATION.md', 'CHANGELOG.md', 'BETA_TESTING.md', 'start-ollama.ps1')
+}
+tasks.register('productionJarSmokeTest', JavaExec) {
+    dependsOn betaJar, betaTestClasses
+    classpath = sourceSets.betaTest.runtimeClasspath
+    mainClass = 'dev.markai.ProductionJarSmokeTest'
+    doFirst {
+        def artifact = betaJar.get().archiveFile.get().asFile
+        def productionClasspath = (sourceSets.main.runtimeClasspath - sourceSets.main.output) + files(artifact)
+        def fabricApi = sourceSets.main.runtimeClasspath.files.findAll {
+            it.isFile() && it.name.startsWith('fabric-api-') && !it.name.endsWith('-sources.jar')
+        }
+        def fabricMods = ([artifact] + fabricApi).collect { it.absolutePath }.join(File.pathSeparator)
+        args = [layout.buildDirectory.get().asFile.absolutePath, productionClasspath.asPath, artifact.absolutePath,
+            project.version.toString(), fabricMods]
+    }
+}
+tasks.register('bootstrapTest', Exec) {
+    onlyIf { System.getProperty('os.name').startsWith('Windows') }
+    commandLine 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'tools/test-ollama-bootstrap.ps1'
+}
+tasks.register('verifyBetaDist') {
+    dependsOn 'betaDist'
+    doLast {
+        def artifact = betaJar.get().archiveFile.get().asFile
+        def archive = tasks.named('betaDist', Zip).get().archiveFile.get().asFile
+        new java.util.zip.ZipFile(archive).withCloseable { zip ->
+            def expected = [artifact.name, "${artifact.name}.sha256", 'README.md', 'LICENSE',
+                'CONFIGURATION.md', 'CHANGELOG.md', 'BETA_TESTING.md', 'start-ollama.ps1'] as Set
+            def actual = zip.entries().toList().collect { it.name } as Set
+            if (actual != expected) throw new GradleException("Unexpected beta archive contents: ${actual}")
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(zip.getInputStream(zip.getEntry(artifact.name)).bytes).encodeHex().toString()
+            def expectedHash = zip.getInputStream(zip.getEntry("${artifact.name}.sha256")).getText('UTF-8').tokenize().first()
+            if (digest != expectedHash) throw new GradleException('Beta archive JAR checksum mismatch')
+        }
+        new java.util.zip.ZipFile(artifact).withCloseable { zip ->
+            if (!zip.getEntry('LICENSE_markai')) throw new GradleException('Missing JAR license')
+            if (zip.entries().toList().any { it.name.contains('GameTest') || it.name.contains('QualityTest') || it.name.startsWith('data/markai-test/') || it.name.startsWith('data/markai-beta-test/') })
+                throw new GradleException('Test code or fixtures in production JAR')
+            def metadata = new groovy.json.JsonSlurper().parseText(zip.getInputStream(zip.getEntry('fabric.mod.json')).getText('UTF-8'))
+            if (metadata.version != project.version || metadata.license != 'CC0-1.0') throw new GradleException('Release metadata mismatch')
+        }
+        logger.lifecycle("Verified beta archive: ${archive.name}; exact allowlist, checksum, metadata and production-only JAR")
     }
 }
