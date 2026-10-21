@@ -17,7 +17,9 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -95,13 +97,44 @@ public final class CompanionStore<T> {
                 Path backup = parent.resolve(absolute.getFileName() + ".pre-0.9-" + UUID.randomUUID() + ".bak");
                 Files.write(backup, existing, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
             }
-            try {
-                Files.move(temporary, absolute, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException unsupported) {
-                Files.move(temporary, absolute, StandardCopyOption.REPLACE_EXISTING);
-            }
+            moveWithRetry(temporary, absolute, (source, destination, options) ->
+                Files.move(source, destination, options));
         } finally {
             Files.deleteIfExists(temporary);
+        }
+    }
+
+    @FunctionalInterface
+    interface MoveOperation {
+        void move(Path source, Path destination, CopyOption... options) throws IOException;
+    }
+
+    /**
+     * Windows can temporarily deny replacing markai.json while another process scans it.
+     * Retry only sharing/permission errors, never destroy the existing save as a fallback.
+     * Other failures (including malformed existing data) still propagate to the caller.
+     */
+    static void moveWithRetry(Path temporary, Path target, MoveOperation operation) throws IOException {
+        final int retries = 5;
+        for (int attempt = 0; ; attempt++) {
+            try {
+                try {
+                    operation.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException unsupported) {
+                    operation.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+                return;
+            } catch (AccessDeniedException blocked) {
+                if (attempt == retries) throw blocked;
+                try {
+                    Thread.sleep(10L << attempt);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    IOException failure = new IOException("Interrupted while waiting to replace companion save", interrupted);
+                    failure.addSuppressed(blocked);
+                    throw failure;
+                }
+            }
         }
     }
 
