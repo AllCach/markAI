@@ -26,6 +26,7 @@ public final class MarkAIClient implements ClientModInitializer {
     private static int ticks;
     private static Wolf preview;
     private static boolean connected;
+    private static long lastCycleAt;
 
     @Override public void onInitializeClient() {
         var category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("markai", "companion"));
@@ -48,13 +49,19 @@ public final class MarkAIClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.player == null || client.level == null) {
                 for (var key : commandKeys.keySet()) while (key.consumeClick()) { }
-                if (connected) { STATE.clear(); preview = null; connected = false; }
+                if (connected) { STATE.clear(); preview = null; connected = false; lastCycleAt = 0; }
                 return;
             }
             connected = true;
             while (open.consumeClick()) if (client.gui.screen() == null) show(CompanionScreen.Tab.PROFILE, false);
             while (dialogue.consumeClick()) if (client.gui.screen() == null) show(CompanionScreen.Tab.DIALOGUE, false);
-            while (quick.consumeClick()) if (client.gui.screen() == null) show(CompanionScreen.Tab.COMMANDS, true);
+            while (quick.consumeClick()) {
+                if (client.gui.screen() != null) continue;
+                // Reuse the existing V binding rather than reserving Q/E or hotbar keys.
+                if (net.minecraft.client.gui.screens.Screen.hasShiftDown()) cycleCompanion(1);
+                else if (net.minecraft.client.gui.screens.Screen.hasControlDown()) cycleCompanion(-1);
+                else show(CompanionScreen.Tab.COMMANDS, true);
+            }
             for (var binding : commandKeys.entrySet()) {
                 boolean pressed = false;
                 while (binding.getKey().consumeClick()) pressed = true;
@@ -93,6 +100,34 @@ public final class MarkAIClient implements ClientModInitializer {
         else STATE.notice("error", Component.translatable("markai.ui.no_server").getString());
     }
     public static void action(String action) { if (NetworkRules.action(action)) send(new CompanionNetwork.Action(action)); }
+
+    /** Shift+V / Ctrl+V switch the server-selected companion without opening a screen. */
+    public static void cycleCompanion(int direction) {
+        if (direction == 0 || !available()) return;
+        var roster = STATE.companions();
+        if (roster.size() < 2) {
+            STATE.notice("status", "Пока нет других компаньонов.");
+            return;
+        }
+        long now = System.nanoTime();
+        if (lastCycleAt != 0 && now - lastCycleAt < 300_000_000L) return;
+        int current = -1;
+        String selected = STATE.companionId();
+        for (int i = 0; i < roster.size(); i++) {
+            if (ClientCompanionState.string(roster.get(i).getAsJsonObject(), "id", "").equals(selected)) {
+                current = i;
+                break;
+            }
+        }
+        int next = current < 0 ? 0 : Math.floorMod(current + Integer.signum(direction), roster.size());
+        var target = roster.get(next).getAsJsonObject();
+        String id = ClientCompanionState.string(target, "id", "");
+        if (id.equals(selected)) return;
+        if (select(id)) {
+            lastCycleAt = now;
+            STATE.notice("status", "Выбран: " + ClientCompanionState.string(target, "name", "компаньон"));
+        }
+    }
     public static boolean select(String companionId) { return NetworkRules.companionId(companionId) && send(new CompanionNetwork.Select(companionId)); }
     public static boolean chat(String message) {
         if (NetworkRules.chat(message) && send(new CompanionNetwork.Chat(message))) {
