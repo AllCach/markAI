@@ -58,8 +58,8 @@ public final class MarkAIClient implements ClientModInitializer {
             while (quick.consumeClick()) {
                 if (client.gui.screen() != null) continue;
                 // Reuse the existing V binding rather than reserving Q/E or hotbar keys.
-                if (net.minecraft.client.gui.screens.Screen.hasShiftDown()) cycleCompanion(1);
-                else if (net.minecraft.client.gui.screens.Screen.hasControlDown()) cycleCompanion(-1);
+                if (client.hasShiftDown()) cycleCompanion(1);
+                else if (client.hasControlDown()) cycleCompanion(-1);
                 else show(CompanionScreen.Tab.COMMANDS, true);
             }
             for (var binding : commandKeys.entrySet()) {
