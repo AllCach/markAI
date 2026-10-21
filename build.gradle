@@ -64,6 +64,12 @@ tasks.register('companionStateTest', JavaExec) {
     mainClass = 'dev.markai.memory.CompanionStateTest'
 }
 check.dependsOn companionStateTest
+tasks.register('companionRegistryTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.companion.CompanionRegistryTest'
+}
+check.dependsOn companionRegistryTest
 
 ['livingCompanionTest': 'dev.markai.brain.LivingCompanionTest',
  'actionIntentTest': 'dev.markai.actions.IntentParserTest',
