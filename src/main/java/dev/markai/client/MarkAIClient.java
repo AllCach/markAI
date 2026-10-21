@@ -59,13 +59,15 @@ public final class MarkAIClient implements ClientModInitializer {
                 if (client.gui.screen() != null) continue;
                 // Reuse the existing V binding rather than reserving Q/E or hotbar keys.
                 if (client.hasShiftDown()) cycleCompanion(1);
-                else if (client.hasControlDown()) cycleCompanion(-1);
                 else show(CompanionScreen.Tab.COMMANDS, true);
             }
             for (var binding : commandKeys.entrySet()) {
                 boolean pressed = false;
                 while (binding.getKey().consumeClick()) pressed = true;
-                if (pressed && client.gui.screen() == null) action(binding.getValue());
+                if (pressed && client.gui.screen() == null) {
+                    if (client.hasControlDown()) groupAction(binding.getValue());
+                    else action(binding.getValue());
+                }
             }
             if (++ticks % 20 == 0 && available() && (client.gui.screen() instanceof CompanionScreen
                     || ClientCompanionState.bool(STATE.settings(), "hud", true) || !STATE.received())) {
@@ -101,7 +103,16 @@ public final class MarkAIClient implements ClientModInitializer {
     }
     public static void action(String action) { if (NetworkRules.action(action)) send(new CompanionNetwork.Action(action)); }
 
-    /** Shift+V / Ctrl+V switch the server-selected companion without opening a screen. */
+    /** Ctrl applies one supported command to the entire owner roster, on the server. */
+    public static void groupAction(String action) {
+        if (!NetworkRules.groupAction(action)) {
+            STATE.notice("error", "Эта команда доступна только для одного компаньона.");
+            return;
+        }
+        send(new CompanionNetwork.Action("all:" + action));
+    }
+
+    /** Shift+V switches the server-selected companion without opening a screen. */
     public static void cycleCompanion(int direction) {
         if (direction == 0 || !available()) return;
         var roster = STATE.companions();
