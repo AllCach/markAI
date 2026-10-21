@@ -209,3 +209,33 @@
 
 - Добавлены базовые `follow`, `stay` и `summon` для Chicken; `status` теперь выводит фактический идентификатор вида вместо жёстко заданного `minecraft:wolf`. Неподдерживаемые волчьи команды должны явно отказывать, а не запускать волчьи действия.
 - Команды `cancel` и удаление из списка теперь отдельно обрабатывают Chicken: остановка не вызывает wolf-only runtime, а удаление активной курицы убирает её сущность из мира. Повторный `spawn/respawn` для уже живой Chicken не создаёт дубль.
+
+
+## 0.11.0 — Multi-species compatibility and verification
+
+Branch: `feature/0.11.0-multispecies`, based on the merged `feature/0.10.5-scaffold` integration.
+
+**Goal:** turn the current Wolf + Chicken/Mark implementation into a validated, safe base for Living World. This is a compatibility and stabilization release, not yet the full Living World 1.0 feature set.
+
+### Required work
+
+1. Run `./gradlew build` and `./gradlew check`; fix compile, test and packaging failures.
+2. Add persistence/lifecycle tests for species-aware loading, old Wolf-record migration, Chicken save/reload and duplicate prevention.
+3. Audit every command, UI action, group-chat path, ambient-dialogue path and async callback for Wolf-only assumptions.
+4. Verify independent selection, identity, memory and commands for multiple companions belonging to the same owner.
+5. Verify server-side owner checks and ensure ordinary wild chickens are not accidentally treated as companions.
+6. Validate in a real Minecraft world: spawn Wolf and Chicken together, issue commands, chat with each, save/reload, kill/respawn and change dimensions.
+7. Update release notes only with tests that actually ran and results actually observed.
+
+### Scope boundaries
+
+- Keep the default Wolf flow and existing Walk features intact.
+- Chicken/Mark remains a separate minimal runtime; no Wolf combat, inventory or tricks are inherited.
+- Field Journal, broad wild-mob ecology, advanced group roles and the full Living World 1.0 vision remain later work unless explicitly reprioritized.
+- Do not merge to `dev` or `main` before build, tests and in-game acceptance pass.
+
+### Status at branch creation
+
+- Multi-species code has been merged into the isolated 0.10.5 branch.
+- Version metadata is set to 0.11.0 on this branch.
+- Build, automated tests and in-game checks remain pending; no release readiness is claimed.
