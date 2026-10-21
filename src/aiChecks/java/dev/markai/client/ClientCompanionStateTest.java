@@ -16,10 +16,15 @@ public final class ClientCompanionStateTest {
         state.notice("error", "The first companion's failed request");
         state.update(snapshot(FIRST, "Walk renamed", "Same conversation").toString());
         check(state.errorNotice() && state.notice().contains("first companion"), "Refresh preserves this companion's notice");
+        check(state.popup().contains("first companion") && state.popupError(), "Errors also appear as a short popup");
 
         state.update(snapshot(SECOND, "Luna", "Second private conversation").toString());
         check(state.companionId().equals(SECOND), "Selection accepts the new server identity");
-        check(!state.errorNotice() && state.notice().isBlank(), "Selection clears the previous companion's transient error");
+        check(!state.errorNotice() && state.notice().isBlank() && state.popup().isBlank(), "Selection clears the previous companion's transient error and popup");
+        state.notice("status", "A longer status message");
+        state.popupNotice("status", "Group order accepted");
+        check(state.notice().isBlank() && state.popup().equals("Group order accepted"),
+            "A popup-only event clears the persistent HUD line and stays transient");
         check(state.string("name", "").equals("Luna"), "The profile follows the selected companion");
         check(state.messages().toString().contains("Second private") && !state.messages().toString().contains("First private"), "Conversations replace each other without mixing");
 
@@ -39,9 +44,10 @@ public final class ClientCompanionStateTest {
         state.update("[]");
         check(state.companionId().equals(SECOND), "An invalid snapshot cannot discard the selected state");
         check(state.errorNotice(), "An invalid snapshot reports an error");
+        check(!state.popup().isBlank() && state.popupError(), "Invalid state is surfaced in the popup layer");
         state.clear();
         check(!state.received() && state.companionId().isBlank() && state.messages().isEmpty() && state.companions().isEmpty(), "Disconnect discards every companion's cached data");
-        check(state.notice().isBlank() && !state.errorNotice(), "Disconnect discards transient notices");
+        check(state.notice().isBlank() && !state.errorNotice() && state.popup().isBlank(), "Disconnect discards transient notices and popups");
         System.out.println("ClientCompanionStateTest: " + checks + " checks passed");
     }
 

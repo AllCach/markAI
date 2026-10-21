@@ -43,6 +43,18 @@ public abstract class WolfInventoryMixin implements CompanionInventoryHolder {
         return markai$inventory;
     }
 
+    @Override public void markai$releaseCompanion() {
+        Wolf wolf = (Wolf) (Object) this;
+        if (wolf.level() instanceof ServerLevel level && markai$isCompanion()) {
+            DogInventory inventory = markai$inventory();
+            if (!inventory.isEmpty()) {
+                Containers.dropContents(level, wolf, inventory);
+                inventory.clearContent();
+            }
+            markai$setCompanion(false);
+        }
+    }
+
     @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
     private void markai$saveInventory(ValueOutput output, CallbackInfo ci) {
         if (markai$isCompanion()) output.putBoolean("markai_companion", true);

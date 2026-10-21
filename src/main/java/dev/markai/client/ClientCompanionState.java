@@ -14,6 +14,9 @@ public final class ClientCompanionState {
     private String notice = "";
     private String noticeKind = "status";
     private long noticeUntil;
+    private String popup = "";
+    private String popupKind = "status";
+    private long popupUntil;
     private long updatedAt;
 
     public void update(String json) {
@@ -37,10 +40,17 @@ public final class ClientCompanionState {
         } catch (RuntimeException error) { notice("error", "Не удалось прочитать состояние компаньона."); }
     }
     public void clear() { state = new JsonObject(); clearNotice(); updatedAt = 0; }
-    private void clearNotice() { notice = ""; noticeKind = "status"; noticeUntil = 0; }
+    private void clearNotice() { notice = ""; noticeKind = "status"; noticeUntil = 0; popup = ""; popupKind = "status"; popupUntil = 0; }
     public void notice(String kind, String text) {
         noticeKind = kind; notice = text; noticeUntil = System.nanoTime() + 12_000_000_000L;
+        popupKind = kind; popup = text; popupUntil = System.nanoTime() + 2_800_000_000L;
     }
+    public void popupNotice(String kind, String text) {
+        notice = ""; noticeUntil = 0;
+        popupKind = kind; popup = text; popupUntil = System.nanoTime() + 2_800_000_000L;
+    }
+    public String popup() { return System.nanoTime() < popupUntil ? popup : ""; }
+    public boolean popupError() { return popupKind.equals("error"); }
     public boolean received() { return updatedAt != 0; }
     public boolean stale() { return updatedAt != 0 && System.nanoTime() - updatedAt > 5_000_000_000L; }
     public String notice() { return System.nanoTime() < noticeUntil ? notice : string("error", ""); }

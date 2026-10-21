@@ -32,6 +32,7 @@ public final class CompanionNetwork {
         void deleteMemory(ServerPlayer player, String id);
         void setting(ServerPlayer player, String key, String value);
         void select(ServerPlayer player, String companionId);
+        void remove(ServerPlayer player, String companionId);
     }
     private static final class Limits {
         long refreshAt, actionAt, chatAt, rateNoticeAt;
@@ -76,6 +77,11 @@ public final class CompanionNetwork {
         public static final StreamCodec<RegistryFriendlyByteBuf, Select> CODEC = StreamCodec.composite(ByteBufCodecs.stringUtf8(36), Select::companionId, Select::new);
         @Override public Type<Select> type() { return TYPE; }
     }
+    public record Remove(String companionId) implements CustomPacketPayload {
+        public static final Type<Remove> TYPE = CompanionNetwork.type("ui_remove");
+        public static final StreamCodec<RegistryFriendlyByteBuf, Remove> CODEC = StreamCodec.composite(ByteBufCodecs.stringUtf8(36), Remove::companionId, Remove::new);
+        @Override public Type<Remove> type() { return TYPE; }
+    }
     public record Setting(String key, String value) implements CustomPacketPayload {
         public static final Type<Setting> TYPE = CompanionNetwork.type("ui_setting");
         public static final StreamCodec<RegistryFriendlyByteBuf, Setting> CODEC = StreamCodec.composite(ByteBufCodecs.stringUtf8(32), Setting::key,
@@ -93,6 +99,12 @@ public final class CompanionNetwork {
             ByteBufCodecs.stringUtf8(256), Notice::text, Notice::new);
         @Override public Type<Notice> type() { return TYPE; }
     }
+    public record Popup(String kind, String text) implements CustomPacketPayload {
+        public static final Type<Popup> TYPE = CompanionNetwork.type("ui_popup");
+        public static final StreamCodec<RegistryFriendlyByteBuf, Popup> CODEC = StreamCodec.composite(ByteBufCodecs.stringUtf8(16), Popup::kind,
+            ByteBufCodecs.stringUtf8(256), Popup::text, Popup::new);
+        @Override public Type<Popup> type() { return TYPE; }
+    }
 
     public static void registerServer(Backend implementation) {
         if (backend != null) throw new IllegalStateException("Companion networking already initialized");
@@ -102,9 +114,9 @@ public final class CompanionNetwork {
         c2s.register(Chat.TYPE, Chat.CODEC); c2s.register(Cancel.TYPE, Cancel.CODEC);
         c2s.register(GroupChat.TYPE, GroupChat.CODEC);
         c2s.register(MemoryDelete.TYPE, MemoryDelete.CODEC); c2s.register(Setting.TYPE, Setting.CODEC);
-        c2s.register(Select.TYPE, Select.CODEC);
+        c2s.register(Select.TYPE, Select.CODEC); c2s.register(Remove.TYPE, Remove.CODEC);
         var s2c = PayloadTypeRegistry.clientboundPlay();
-        s2c.register(Snapshot.TYPE, Snapshot.CODEC); s2c.register(Notice.TYPE, Notice.CODEC);
+        s2c.register(Snapshot.TYPE, Snapshot.CODEC); s2c.register(Notice.TYPE, Notice.CODEC); s2c.register(Popup.TYPE, Popup.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(Request.TYPE, (payload, context) -> {
             ServerPlayer player = context.player();
             Limits limits = LIMITS.computeIfAbsent(player.getUUID(), key -> new Limits());
@@ -147,6 +159,10 @@ public final class CompanionNetwork {
         ServerPlayNetworking.registerGlobalReceiver(Select.TYPE, (payload, context) -> mutate(context.player(), () -> {
             if (!NetworkRules.companionId(payload.companionId())) throw new IllegalArgumentException("Invalid companion id");
             backend.select(context.player(), payload.companionId());
+        }));
+        ServerPlayNetworking.registerGlobalReceiver(Remove.TYPE, (payload, context) -> mutate(context.player(), () -> {
+            if (!NetworkRules.companionId(payload.companionId())) throw new IllegalArgumentException("Invalid companion id");
+            backend.remove(context.player(), payload.companionId());
         }));
         ServerPlayNetworking.registerGlobalReceiver(Setting.TYPE, (payload, context) -> mutate(context.player(), () -> {
             if (!NetworkRules.setting(payload.key(), payload.value())) throw new IllegalArgumentException("Invalid setting");
@@ -191,6 +207,12 @@ public final class CompanionNetwork {
     public static void notice(ServerPlayer player, String kind, String text) {
         if (!ServerPlayNetworking.canSend(player, Notice.TYPE)) return;
         ServerPlayNetworking.send(player, new Notice(kind.length() > 16 ? kind.substring(0, 16) : kind,
+            text.length() > 256 ? text.substring(0, 256) : text));
+    }
+
+    public static void popup(ServerPlayer player, String kind, String text) {
+        if (!ServerPlayNetworking.canSend(player, Popup.TYPE)) return;
+        ServerPlayNetworking.send(player, new Popup(kind.length() > 16 ? kind.substring(0, 16) : kind,
             text.length() > 256 ? text.substring(0, 256) : text));
     }
 }

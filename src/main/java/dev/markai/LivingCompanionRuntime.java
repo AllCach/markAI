@@ -28,6 +28,7 @@ final class LivingCompanionRuntime {
     LivingCompanionRuntime(java.util.function.BooleanSupplier memoryEnabled) { this.memoryEnabled = memoryEnabled; }
     final WorldObserver observer = new WorldObserver();
     private final Map<UUID, Observation> previous = new HashMap<>();
+    private final Map<UUID, Goal> behaviorGoals = new HashMap<>();
     private static final class Observation {
         String biome, dimension;
         boolean sleeping, cave, home, combat;
@@ -43,8 +44,12 @@ final class LivingCompanionRuntime {
         final dev.markai.events.EventHistory temporaryEvents = new dev.markai.events.EventHistory();
     }
 
-    void clear() { previous.clear(); observer.clear(); }
-    void remove(UUID id) { previous.remove(id); observer.remove(id); }
+    void clear() { previous.clear(); behaviorGoals.clear(); observer.clear(); }
+    void remove(UUID id) { previous.remove(id); behaviorGoals.remove(id); observer.remove(id); }
+    void unconfigure(MarkAIMod.Companion c, Wolf wolf) {
+        Goal goal = behaviorGoals.remove(c.entity);
+        if (goal != null) ((dev.markai.mixin.MobAccessor) wolf).markai$goals().removeGoal(goal);
+    }
     Map<String, Object> debug(MarkAIMod.Companion c, Wolf wolf) {
         Observation observed = previous.get(c.entity);
         var result = new LinkedHashMap<String, Object>();
@@ -272,7 +277,7 @@ final class LivingCompanionRuntime {
         }
     }
     Goal goal(MarkAIMod.Companion c, Wolf wolf) {
-        return new Goal() {
+        Goal behaviorGoal = new Goal() {
             { setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK)); }
             @Override public boolean canUse() {
                 return !c.workActive && (!c.ownerUnavailable || c.living.activity() == Activity.RETREAT) && c.trick == null && switch (c.living.activity()) {
@@ -324,6 +329,8 @@ final class LivingCompanionRuntime {
                 }
             }
         };
+        behaviorGoals.put(c.entity, behaviorGoal);
+        return behaviorGoal;
     }
     static boolean safePathTarget(ServerLevel level, Vec3 pos) {
         return CompanionSafety.safeNavigationTarget(level, pos);

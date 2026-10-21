@@ -23,25 +23,27 @@ public final class CompanionHubScreen extends Screen {
     public enum Tab { COMPANIONS, CHAT, SETTINGS }
     private static final int WHITE=0xFFE8EFEA, MUTED=0xFF9DB4A8, ACCENT=0xFF9CDBB5;
     private static final List<String> SETTINGS = List.of("all:defense", "all:autochat", "all:hud", "all:follow_distance", "group_enabled", "mutual_replies");
-    private Tab tab = Tab.COMPANIONS;
+    private Tab tab;
     private int left, top, panelWidth, panelHeight, contentTop, contentBottom;
     private int rosterOffset, settingsOffset, chatScroll;
     private int rosterSize = -1;
-    private String draft = "", requestedId = "";
+    private String draft = "", requestedId = "", confirmRemoveId = "", pendingRemoveId = "";
     private CompanionScreen.Tab requestedTab;
-    private long requestedAt;
+    private long requestedAt, confirmRemoveUntil, pendingRemoveUntil;
     private EditBox input;
     private Button send, cancel;
     private final List<Button> settingsButtons = new ArrayList<>();
+    private final java.util.Map<String, Button> removeButtons = new java.util.LinkedHashMap<>();
 
-    public CompanionHubScreen() { super(tr("markai.hub.title")); }
+    public CompanionHubScreen() { this(Tab.COMPANIONS); }
+    public CompanionHubScreen(Tab tab) { super(tr("markai.hub.title")); this.tab = tab; }
     private static Component tr(String key) { return Component.translatable(key); }
     private static String label(String key) { return tr(key).getString(); }
     private static ClientCompanionState state() { return MarkAIClient.STATE; }
     @Override public boolean isPauseScreen() { return false; }
     @Override protected void init() {
         if (input != null) draft = input.getValue();
-        input = null; send = null; cancel = null; settingsButtons.clear();
+        input = null; send = null; cancel = null; settingsButtons.clear(); removeButtons.clear();
         panelWidth = Math.min(820, width - 16); panelHeight = Math.min(500, height - 16);
         left = (width - panelWidth) / 2; top = (height - panelHeight) / 2;
         contentTop = top + 64; contentBottom = top + panelHeight - 30;
@@ -76,6 +78,7 @@ public final class CompanionHubScreen extends Screen {
             String id = ClientCompanionState.string(member,"id","");
             int x=left+14+(i%columns())*(cardWidth()+8), y=contentTop+14+(i/columns())*72;
             int w=(cardWidth()-16)/3;
+            removeButtons.put(id, button(label("markai.hub.remove"),x+cardWidth()-76,y+3,56,()->removeMember(id)));
             button(label("markai.tab.profile"),x+6,y+43,w,()->openMember(id,CompanionScreen.Tab.PROFILE));
             button(label("markai.tab.dialogue"),x+9+w,y+43,w,()->openMember(id,CompanionScreen.Tab.DIALOGUE));
             button(label("markai.tab.settings"),x+12+2*w,y+43,w,()->openMember(id,CompanionScreen.Tab.SETTINGS));
@@ -85,6 +88,19 @@ public final class CompanionHubScreen extends Screen {
         if (!requestedId.isBlank()) return;
         if (id.equals(state().companionId())) { MarkAIClient.show(destination,false); return; }
         if (MarkAIClient.select(id)) { requestedId=id; requestedTab=destination; requestedAt=System.nanoTime(); }
+    }
+    private void removeMember(String id) {
+        if (!id.equals(confirmRemoveId) || System.nanoTime() > confirmRemoveUntil) {
+            confirmRemoveId = id;
+            confirmRemoveUntil = System.nanoTime() + 3_000_000_000L;
+            return;
+        }
+        if (MarkAIClient.removeCompanion(id)) {
+            confirmRemoveId = "";
+            pendingRemoveId = id;
+            pendingRemoveUntil = System.nanoTime() + 3_000_000_000L;
+            state().notice("status", label("markai.hub.removing"));
+        }
     }
     private void initChat() {
         int y=contentBottom-21, x=left+12;
@@ -122,6 +138,15 @@ public final class CompanionHubScreen extends Screen {
         if (NetworkRules.chat(text) && MarkAIClient.groupChat(text)) { input.setValue(""); draft=""; chatScroll=0; }
     }
     private void updateButtons() {
+        long now = System.nanoTime();
+        if (now > confirmRemoveUntil) confirmRemoveId = "";
+        if (now > pendingRemoveUntil || !containsCompanion(pendingRemoveId)) pendingRemoveId = "";
+        for (var entry : removeButtons.entrySet()) {
+            boolean confirming = entry.getKey().equals(confirmRemoveId);
+            boolean pending = entry.getKey().equals(pendingRemoveId);
+            entry.getValue().setMessage(tr(pending ? "markai.hub.removing" : confirming ? "markai.hub.remove_confirm" : "markai.hub.remove"));
+            entry.getValue().active = MarkAIClient.available() && !pending && requestedId.isBlank();
+        }
         if (send!=null) send.active=MarkAIClient.available() && ClientCompanionState.bool(state().group(),"can_chat",false) && NetworkRules.chat(input.getValue());
         if (cancel!=null) cancel.active=MarkAIClient.available() && ClientCompanionState.bool(state().group(),"thinking",false);
         for (int i=0;i<settingsButtons.size();i++) {
@@ -135,6 +160,12 @@ public final class CompanionHubScreen extends Screen {
             settingsButtons.get(i).active=MarkAIClient.available() && !state().companions().isEmpty();
         }
         if (!requestedId.isBlank()) for (var child:children()) if (child instanceof Button button && !button.getMessage().getString().equals("×")) button.active=false;
+    }
+    private boolean containsCompanion(String id) {
+        if (id == null || id.isBlank()) return false;
+        for (var companion : state().companions())
+            if (companion.isJsonObject() && ClientCompanionState.string(companion.getAsJsonObject(),"id","").equals(id)) return true;
+        return false;
     }
     private static String settingField(String key) { return key.startsWith("all:")?key.substring(4):key.equals("group_enabled")?"enabled":key; }
     @Override public void tick() {
@@ -188,7 +219,7 @@ public final class CompanionHubScreen extends Screen {
             boolean selected=ClientCompanionState.string(member,"id","").equals(state().companionId());
             graphics.fill(x,y,x+w,y+66,selected?0xFF263F38:0xFF202E31); graphics.outline(x,y,w,66,selected?0xFF7BB395:0xFF3C5350);
             String name=ClientCompanionState.string(member,"name","Mark");
-            graphics.text(font,font.plainSubstrByWidth((selected?"● ":"")+name,w-14),x+7,y+6,ACCENT);
+            graphics.text(font,font.plainSubstrByWidth((selected?"● ":"")+name,w-82),x+7,y+6,ACCENT);
             String health=String.format(Locale.ROOT,"%.0f / %.0f",ClientCompanionState.number(member,"health",0),ClientCompanionState.number(member,"max_health",40));
             String activity=CompanionScreen.localizedState("activity",ClientCompanionState.string(member,"activity","IDLE"));
             graphics.text(font,font.plainSubstrByWidth(health+" · "+activity,w-14),x+7,y+19,MUTED);

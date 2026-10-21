@@ -45,7 +45,7 @@ final class WolfWorkRuntime {
         UUID target;
         final Set<UUID> unreachable = new HashSet<>();
         int collected, failedPaths;
-        boolean afterAttack;
+        boolean afterAttack, reportResult = true;
         MarkAIMod.Companion companion;
         Wolf wolf;
         Job(Kind kind, Wolf wolf, long duration) {
@@ -62,22 +62,34 @@ final class WolfWorkRuntime {
         goals.addGoal(1, new CollectionGoal(companion, wolf));
     }
 
+    void unconfigure(Wolf wolf) {
+        ((MobAccessor) wolf).markai$goals().removeAllGoals(goal -> goal instanceof CollectionGoal);
+    }
+
     ActionResult attack(MarkAIMod.Companion companion, Wolf wolf, ServerPlayer owner, LivingEntity target) {
+        return attack(companion, wolf, owner, target, true);
+    }
+
+    ActionResult attack(MarkAIMod.Companion companion, Wolf wolf, ServerPlayer owner, LivingEntity target, boolean reportResult) {
         if (!validOwner(companion, wolf, owner) || !CompanionCombatRules.commandTargetAllowed(wolf, owner, target))
             return failed(companion, wolf, "invalid_attack_target", "Посмотри на видимого врага или дикое животное не дальше 16 блоков. Игроков и питомцев я не трогаю.");
         if (unsafe(wolf, true)) return failed(companion, wolf, "unsafe_work", "Сейчас мне нужно выбраться из опасности и восстановиться.");
         cancel(companion, wolf);
-        Job job = new Job(Kind.ATTACK, wolf, 600); job.target = target.getUUID();
+        Job job = new Job(Kind.ATTACK, wolf, 600); job.target = target.getUUID(); job.reportResult = reportResult;
         begin(companion, wolf, job); wolf.setTarget(target);
         return companion.living.lastAction = ActionResult.accepted("Атакую выбранную цель. Потом подберу её добычу рядом.", job.level.getGameTime());
     }
 
     ActionResult collect(MarkAIMod.Companion companion, Wolf wolf, ServerPlayer owner) {
+        return collect(companion, wolf, owner, true);
+    }
+
+    ActionResult collect(MarkAIMod.Companion companion, Wolf wolf, ServerPlayer owner, boolean reportResult) {
         if (!validOwner(companion, wolf, owner)) return failed(companion, wolf, "invalid_owner", "Для сбора подойди к своему волку на 16 блоков.");
         if (unsafe(wolf, wolf.getTarget() != null)) return failed(companion, wolf, "unsafe_work", "Сейчас мне нужно выбраться из опасности и восстановиться.");
         if (activeThreat(wolf, owner) != null) return failed(companion, wolf, "collect_interrupted", "Сейчас идёт бой. Соберу предметы, когда станет безопасно.");
         cancel(companion, wolf);
-        Job job = new Job(Kind.COLLECT, wolf, 1200); begin(companion, wolf, job);
+        Job job = new Job(Kind.COLLECT, wolf, 1200); job.reportResult = reportResult; begin(companion, wolf, job);
         return companion.living.lastAction = ActionResult.accepted("Собираю лежащие предметы в радиусе 16 блоков в свой инвентарь.", job.level.getGameTime());
     }
 
@@ -246,9 +258,11 @@ final class WolfWorkRuntime {
         return companion.living.lastAction = ActionResult.failed(code, text, wolf.level().getGameTime());
     }
     private void finish(MarkAIMod.Companion companion, Wolf wolf, ActionResult result) {
+        Job job = jobs.get(wolf.getUUID());
+        boolean reportResult = job == null || job.reportResult;
         cancel(companion, wolf); companion.living.lastAction = result;
         ServerPlayer owner = ((ServerLevel) wolf.level()).getServer().getPlayerList().getPlayer(companion.owner);
-        if (owner != null) {
+        if (owner != null && reportResult) {
             owner.sendSystemMessage(Component.literal("<" + companion.living.name + "> " + result.message()));
             CompanionNetwork.notice(owner, result.success() ? "info" : "error", result.message());
         }

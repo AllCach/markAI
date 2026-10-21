@@ -86,6 +86,24 @@ public final class CompanionRegistry<T> {
         return true;
     }
 
+    /** Removes only an owner's own companion and selects their next remaining record. */
+    public T remove(UUID owner, UUID id) {
+        required(owner); required(id);
+        Entry<T> entry = records.get(id);
+        if (entry == null || !entry.owner.equals(owner)) return null;
+        records.remove(id);
+        entities.remove(entry.entity);
+        LinkedHashSet<UUID> owned = owners.get(owner);
+        owned.remove(id);
+        if (owned.isEmpty()) {
+            owners.remove(owner);
+            selected.remove(owner);
+        } else if (id.equals(selected.get(owner))) {
+            selected.put(owner, owned.iterator().next());
+        }
+        return entry.value;
+    }
+
     public Collection<T> values() {
         List<T> result = new ArrayList<>(records.size());
         for (Entry<T> entry : records.values()) result.add(entry.value);

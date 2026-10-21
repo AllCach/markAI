@@ -3,6 +3,7 @@ package dev.markai;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.markai.companion.CompanionRegistry;
+import dev.markai.inventory.CompanionInventoryHolder;
 import dev.markai.network.CompanionNetwork;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
@@ -15,6 +16,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.animal.cow.Cow;
 import net.minecraft.world.entity.animal.wolf.Wolf;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.phys.Vec3;
@@ -152,6 +156,60 @@ public final class MultiCompanionGameTest {
         helper.assertTrue(!first.workActive && !second.workActive
                 && firstWolf.getTarget() == null && secondWolf.getTarget() == null,
             "Ctrl+stop cancels both native combat jobs");
+        helper.succeed();
+    }
+
+    @GameTest(structure = "markai-test:arena", maxTicks = 100)
+    public void removeCompanionKeepsTameWolfAndDropsBagItems(GameTestHelper helper) throws Exception {
+        for (int x = 0; x < 32; x++) for (int z = 0; z < 32; z++)
+            helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+        ServerPlayer owner = player(helper, 2, 2, 2);
+        MarkAIMod mod = FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream()
+            .filter(MarkAIMod.class::isInstance).map(MarkAIMod.class::cast).findFirst().orElseThrow();
+        command(owner, "mark spawn");
+        var registry = TestCompanions.registry(mod);
+        var companion = registry.selected(owner.getUUID());
+        Wolf wolf = (Wolf) helper.getLevel().getEntity(companion.entity);
+        var holder = (CompanionInventoryHolder) wolf;
+        holder.markai$inventory().setItem(0, new ItemStack(Items.BEEF, 4));
+
+        backend().remove(owner, companion.id.toString());
+
+        helper.assertTrue(registry.owned(owner.getUUID()).isEmpty() && registry.selected(owner.getUUID()) == null,
+            "Removal clears the companion roster and selected identity");
+        helper.assertTrue(wolf.isAlive() && wolf.isTame() && wolf.isOwnedBy(owner) && !holder.markai$isCompanion(),
+            "Removal leaves the same living vanilla-tame wolf with its owner");
+        int dropped = helper.getLevel().getEntitiesOfClass(ItemEntity.class, wolf.getBoundingBox().inflate(4)).stream()
+            .filter(ItemEntity::isAlive).map(ItemEntity::getItem).filter(stack -> stack.is(Items.BEEF))
+            .mapToInt(ItemStack::getCount).sum();
+        helper.assertTrue(dropped == 4 && holder.markai$inventory().isEmpty(),
+            "Removing the MarkAI companion releases its bag items without losing or duplicating them");
+        helper.succeed();
+    }
+
+    @GameTest(structure = "markai-test:arena", maxTicks = 100)
+    public void cannotRemoveUnloadedCompanionAndLoseItsBag(GameTestHelper helper) throws Exception {
+        for (int x = 0; x < 32; x++) for (int z = 0; z < 32; z++)
+            helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+        ServerPlayer owner = player(helper, 2, 2, 2);
+        MarkAIMod mod = FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream()
+            .filter(MarkAIMod.class::isInstance).map(MarkAIMod.class::cast).findFirst().orElseThrow();
+        command(owner, "mark spawn");
+        var registry = TestCompanions.registry(mod);
+        var companion = registry.selected(owner.getUUID());
+        Wolf wolf = (Wolf) helper.getLevel().getEntity(companion.entity);
+        var holder = (CompanionInventoryHolder) wolf;
+        holder.markai$inventory().setItem(0, new ItemStack(Items.BEEF, 4));
+
+        UUID entityId = companion.entity;
+        companion.entity = UUID.randomUUID(); // Simulate an entity outside the server's loaded chunks.
+        backend().remove(owner, companion.id.toString());
+
+        helper.assertTrue(registry.owned(owner.getUUID()).size() == 1 && registry.selected(owner.getUUID()) == companion,
+            "An unloaded companion remains in its owner's roster when removal cannot reach its wolf");
+        helper.assertTrue(wolf.isAlive() && holder.markai$isCompanion() && holder.markai$inventory().getItem(0).getCount() == 4,
+            "An unloaded wolf stays registered with its bag intact instead of becoming an orphan");
+        companion.entity = entityId;
         helper.succeed();
     }
 

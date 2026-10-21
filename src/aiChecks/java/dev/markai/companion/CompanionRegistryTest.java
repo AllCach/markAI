@@ -58,6 +58,7 @@ public final class CompanionRegistryTest {
         check(!registry.select(bob, walk.id) && registry.selected(bob) == other, "Owner cannot select another player's companion");
         check(registry.select(alice, mark.id) && registry.selected(alice) == mark && registry.selected(bob) == other, "Changing one selection leaves another owner unchanged");
         check(!registry.select(alice, UUID.randomUUID()), "Missing companion cannot be selected");
+        check(registry.remove(bob, walk.id) == null && registry.contains(walk.id), "An owner cannot remove another player's companion");
         var oldValues = registry.values();
         var oldOwned = registry.owned(alice);
         var oldSelected = registry.selections();
@@ -105,6 +106,13 @@ public final class CompanionRegistryTest {
         rejects(() -> registry.select(alice, null), IllegalArgumentException.class, "Null selection ID rejected");
         check(registry.contains(walk.id) && !registry.contains(UUID.randomUUID()), "Contains checks companion identity");
         check(registry.owned(UUID.randomUUID()).isEmpty() && registry.selected(UUID.randomUUID()) == null, "Unknown owner has no companion");
+        registry.select(alice, replacement.id);
+        check(registry.remove(alice, replacement.id) == replacement && registry.get(replacement.id) == null
+            && registry.byEntity(replacement.entity) == null && registry.selected(alice) == walk,
+            "Removing the selected companion clears both indexes and selects the next owned companion");
+        for (Saved companion : registry.owned(alice)) registry.remove(alice, companion.id);
+        check(registry.owned(alice).isEmpty() && registry.selected(alice) == null && !registry.selections().containsKey(alice),
+            "Removing the last companion clears its owner roster and selection");
         registry.clear();
         check(registry.values().isEmpty() && registry.selections().isEmpty() && registry.byEntity(walk.entity) == null && registry.owned(alice).isEmpty(), "Clear removes every index and selection");
     }

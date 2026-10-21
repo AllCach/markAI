@@ -287,21 +287,26 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                         "The completed exchange replaces the in-flight display without duplicating either message");
                 });
                 closeWithEscape(context);
-                pace(context); context.getInput().holdKey(224); // SDL left Control.
-                try { context.getInput().pressKey(KeyMapping.get("key.markai.stay")); context.waitTicks(2); }
-                finally { context.getInput().releaseKey(224); }
+                // Send the same typed group commands as the Ctrl+hotkeys. The client test input
+                // helper can synthesize key presses, but modifier state varies across SDL builds.
+                pace(context); context.runOnClient(client -> MarkAIClient.groupAction("stay"));
                 connection.waitForServerboundPackets();
                 server.waitFor(instance -> allFollowing(mod, ownerId, false));
-                pace(context); context.getInput().holdKey(224);
-                try { context.getInput().pressKey(KeyMapping.get("key.markai.follow")); context.waitTicks(2); }
-                finally { context.getInput().releaseKey(224); }
+                context.waitFor(client -> MarkAIClient.STATE.popup().contains("Всем: ждать"));
+                context.runOnClient(client -> check(MarkAIClient.STATE.notice().isBlank(),
+                    "A group command popup does not leave a duplicate persistent HUD line"));
+                context.takeScreenshot("markai-group-command-popup-stay");
+                pace(context); context.runOnClient(client -> MarkAIClient.groupAction("follow"));
                 connection.waitForServerboundPackets();
                 server.waitFor(instance -> allFollowing(mod, ownerId, true));
-                pace(context); context.getInput().holdKey(225); // SDL left Shift.
-                try { context.getInput().pressKey(KeyMapping.get("key.markai.quick")); context.waitTicks(2); }
-                finally { context.getInput().releaseKey(225); }
+                // Exercise selection cycling directly: the client GameTest input helper does not
+                // expose modifier state to Minecraft's hasShiftDown() check.
+                pace(context); context.runOnClient(client -> MarkAIClient.cycleCompanion(1));
                 connection.waitForServerboundPackets();
                 context.waitFor(client -> client.gui.screen() == null && MarkAIClient.STATE.companionId().equals(secondId.get().toString()));
+                context.getInput().pressKey(KeyMapping.get("key.markai.quick"));
+                context.waitForScreen(CompanionScreen.class);
+                closeWithEscape(context);
 
                 // Shared hub: real controls, owner packets and a finite sequence of controlled model replies.
                 var privateHistory = new AtomicReference<Map<UUID,List<OllamaClient.ChatMessage>>>();
@@ -320,6 +325,9 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                         });
                     } catch(ReflectiveOperationException error) { throw new RuntimeException(error); }
                 });
+                pace(context);context.getInput().pressKey(KeyMapping.get("key.markai.group_chat"));context.waitForScreen(CompanionHubScreen.class);
+                context.runOnClient(client->check(editBox(client.gui.screen())!=null,"Y opens the shared chat directly"));
+                closeWithEscape(context);
                 pace(context);context.getInput().pressKey(KeyMapping.get("key.markai.hub"));context.waitForScreen(CompanionHubScreen.class);
                 context.waitFor(client->MarkAIClient.STATE.companions().size()==2 && MarkAIClient.STATE.companions().toString().contains("Луна"));
                 assertLayout(context,windowChecks,"hub-roster-window");context.takeScreenshot("markai-hub-roster-window");
@@ -427,6 +435,22 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                 context.getInput().typeChars("Рекс, ответишь?");context.runOnClient(client->client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_RETURN,0,0)));
                 connection.waitForServerboundPackets();context.waitTicks(25);
                 check(groupCalls.size()==17,"Vanilla Minecraft chat cannot activate companion names outside the shared tab");
+                closeWithEscape(context);
+                context.getInput().pressKey(KeyMapping.get("key.markai.hub"));context.waitForScreen(CompanionHubScreen.class);
+                context.waitFor(client->MarkAIClient.STATE.companions().size()==2);
+                context.takeScreenshot("markai-hub-before-remove");
+                context.clickScreenButton(text("markai.hub.remove"));context.waitTicks(2);
+                context.takeScreenshot("markai-hub-remove-confirm");
+                context.clickScreenButton(text("markai.hub.remove_confirm"));connection.waitForServerboundPackets();
+                server.waitFor(instance->{try{return TestCompanions.registry(mod).owned(ownerId).size()==1;}catch(ReflectiveOperationException error){throw new RuntimeException(error);}});
+                context.waitFor(client->MarkAIClient.STATE.companions().size()==1);
+                context.waitTicks(2);
+                context.runOnClient(client->check(MarkAIClient.STATE.companionId().equals(secondId.get().toString()),
+                    "Removing one roster entry keeps the remaining companion selected"));
+                context.runOnClient(client->check(client.gui.screen().children().stream().filter(widget->widget instanceof Button)
+                    .map(widget->((Button)widget).getMessage().getString()).noneMatch(label->label.equals(text("markai.hub.removing"))),
+                    "A completed removal leaves no stuck pending button in the roster"));
+                context.takeScreenshot("markai-hub-after-remove");
             } finally {
                 try {
                     restoreWindow(context, originalWindow);
@@ -582,7 +606,9 @@ public final class ClientUiGameTest implements FabricClientGameTest {
     }
 
     private static void closeWithEscape(ClientGameTestContext context) {
-        context.runOnClient(client -> client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0)));
+        context.runOnClient(client -> {
+            if (client.gui.screen() != null) client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
+        });
         context.waitForScreen(null);
     }
 

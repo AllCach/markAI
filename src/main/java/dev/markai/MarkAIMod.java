@@ -194,6 +194,7 @@ public final class MarkAIMod implements ModInitializer {
                 }
             }
             public void setting(ServerPlayer player, String key, String value) { updateSetting(player, key, value); }
+            public void remove(ServerPlayer player, String id) { removeCompanion(player, id); }
         });
         CompanionCombatRules.register((wolf, target) -> companions.values().stream().filter(c -> c.entity.equals(wolf.getUUID()))
             .anyMatch(c -> c.living.settings.defense && !c.dismissed && LivingCompanionRuntime.validTarget(c, target)));
@@ -587,6 +588,11 @@ public final class MarkAIMod implements ModInitializer {
         return success ? 1 : 0;
     }
 
+    private int popupNotice(ServerPlayer owner, String message, boolean success) {
+        CompanionNetwork.popup(owner, success ? "status" : "error", message);
+        return success ? 1 : 0;
+    }
+
     private int privateChat(ServerPlayer owner, String input) {
         if (!NetworkRules.chat(input)) {
             CompanionNetwork.notice(owner, "error", "Сообщение должно содержать от 1 до 512 символов.");
@@ -615,7 +621,7 @@ public final class MarkAIMod implements ModInitializer {
         attackMissNoticeAt.entrySet().removeIf(entry -> now - entry.getValue() > 60_000);
         if (previous == null || now - previous >= 1_500) {
             attackMissNoticeAt.put(owner.getUUID(), now);
-            wolfNotice(owner, message, false);
+            popupNotice(owner, message, false);
         }
         return 0;
     }
@@ -651,9 +657,9 @@ public final class MarkAIMod implements ModInitializer {
     }
     private int performGroupCommand(ServerPlayer owner, String command, List<Companion> owned) {
         if (!NetworkRules.groupAction(command) || !storageHealthy || !owner.isAlive() || owner.isSpectator())
-            return wolfNotice(owner, "Групповая команда недоступна.", false);
+            return popupNotice(owner, "Групповая команда недоступна.", false);
         if (owned.stream().anyMatch(c -> !c.owner.equals(owner.getUUID()))) return 0;
-        if (owned.isEmpty()) return wolfNotice(owner, "У тебя нет компаньонов.", false);
+        if (owned.isEmpty()) return popupNotice(owner, "У тебя нет компаньонов.", false);
 
         LivingEntity target = command.equals("attack") ? pointedLiving(owner, CompanionCombatRules.combatRadius()) : null;
         if (command.equals("attack") && target == null)
@@ -681,9 +687,9 @@ public final class MarkAIMod implements ModInitializer {
             invalidate(aiSessions.computeIfAbsent(companion.id, key -> new AISession()));
             ActionResult result;
             if (command.equals("attack")) {
-                result = wolfWork.attack(companion, wolf, owner, target);
+                result = wolfWork.attack(companion, wolf, owner, target, false);
             } else if (command.equals("collect")) {
-                result = wolfWork.collect(companion, wolf, owner);
+                result = wolfWork.collect(companion, wolf, owner, false);
             } else {
                 CompanionAction action = switch (command) {
                     case "follow" -> CompanionAction.FOLLOW;
@@ -702,10 +708,18 @@ public final class MarkAIMod implements ModInitializer {
             else accepted++;
         }
         if (accepted > 0) save();
-        return wolfNotice(owner, "Команда всем: " + command + " — принято " + accepted
+        return popupNotice(owner, "Всем: " + groupCommandLabel(command) + " — " + accepted
             + " из " + owned.size() + (skipped > 0 ? ", пропущено " + skipped : ""), accepted > 0);
     }
 
+    private static String groupCommandLabel(String command) {
+        return switch (command) {
+            case "attack" -> "атаковать"; case "collect" -> "собирать"; case "stop" -> "остановиться";
+            case "follow" -> "за мной"; case "stay" -> "ждать"; case "come" -> "ко мне";
+            case "rest" -> "отдыхать"; case "wander" -> "гулять"; case "home" -> "домой";
+            case "investigate" -> "осмотреться"; default -> command;
+        };
+    }
     private int startWolfOrder(Companion companion, ServerPlayer owner, String command) {
         Wolf wolf = find(companion);
         if (wolf == null || !owner.isAlive() || owner.isSpectator() || wolf.level() != owner.level()
@@ -1033,6 +1047,46 @@ public final class MarkAIMod implements ModInitializer {
             return;
         }
         save();
+    }
+
+    private void removeCompanion(ServerPlayer owner, String rawId) {
+        if (!storageHealthy || !NetworkRules.companionId(rawId)) {
+            CompanionNetwork.notice(owner, "error", "Не удалось проверить данные MarkAI; питомец остался в списке.");
+            return;
+        }
+        UUID id = UUID.fromString(rawId);
+        Companion companion = companions.get(id);
+        if (companion == null || !companion.owner.equals(owner.getUUID())) {
+            CompanionNetwork.notice(owner, "error", "Этого питомца нет в твоём списке.");
+            return;
+        }
+
+        Wolf wolf = companion.dead ? null : find(companion);
+        if (!companion.dead && wolf == null) {
+            CompanionNetwork.notice(owner, "error", "Сначала призови питомца или загрузи его чанк, затем убери из списка.");
+            return;
+        }
+        AISession session = aiSessions.remove(companion.id);
+        if (session != null) invalidate(session);
+        cancelTrick(companion);
+        wolfWork.remove(companion.entity);
+        livingRuntime.remove(companion.entity);
+        configured.remove(companion.entity);
+        if (wolf != null) {
+            wolf.getNavigation().stop();
+            wolf.setTarget(null);
+            livingRuntime.unconfigure(companion, wolf);
+            var goals = ((MobAccessor) wolf).markai$goals();
+            goals.removeAllGoals(goal -> goal instanceof DogTrickGoal || goal instanceof FollowOwnerGoal);
+            wolfWork.unconfigure(wolf);
+            goals.addGoal(6, new FollowOwnerGoal(wolf, 1.0, 10.0F, 2.0F));
+            wolf.setOrderedToSit(false);
+            wolf.getAttribute(Attributes.FOLLOW_RANGE).setBaseValue(16.0);
+            ((CompanionInventoryHolder) wolf).markai$releaseCompanion();
+        }
+        companions.remove(owner.getUUID(), id);
+        save();
+        CompanionNetwork.notice(owner, "status", companion.living.name + " убран из MarkAI. Приручённый волк остался в мире.");
     }
 
     /** A departing or dead owner may have multiple outstanding companion conversations. */
