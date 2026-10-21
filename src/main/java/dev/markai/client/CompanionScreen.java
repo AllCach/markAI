@@ -142,6 +142,11 @@ public final class CompanionScreen extends Screen {
         return addRenderableWidget(Button.builder(Component.literal(text), button -> action.run()).bounds(x, y, w, 20).build());
     }
     private void command(String action) {
+        if (minecraft.hasControlDown()) {
+            MarkAIClient.groupAction(action);
+            // Group orders keep the menu open so the player can issue a follow-up.
+            return;
+        }
         MarkAIClient.action(action);
         if (quick || action.equals("inventory")) minecraft.gui.setScreen(null);
     }
