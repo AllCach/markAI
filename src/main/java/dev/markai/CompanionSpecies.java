@@ -11,7 +11,7 @@ import java.util.Optional;
  */
 public enum CompanionSpecies {
     WOLF("minecraft:wolf", true, true, true, true),
-    CHICKEN("minecraft:chicken", false, false, false, false);
+    CHICKEN("minecraft:chicken", true, false, false, false);
 
     private final String id;
     private final boolean runtimeSupported;
