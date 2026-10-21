@@ -408,9 +408,16 @@ public final class MarkAIMod implements ModInitializer {
             }
             return adoptWolf(owner, wolf);
         }
-        if (command.equals("spawn_chicken")
-                || (command.equals("spawn") || command.equals("respawn"))
-                    && c != null && c.dead && CompanionSpecies.CHICKEN.id().equals(c.species)) {
+        if (command.equals("spawn_chicken")) return spawnChicken(owner, c);
+        if (c != null && CompanionSpecies.CHICKEN.id().equals(c.species)
+                && (command.equals("respawn") || command.equals("spawn") && c.dead)) {
+            if (!c.dead) {
+                Chicken existing = findChicken(c);
+                owner.sendSystemMessage(Component.literal(existing != null
+                    ? c.living.name + " уже существует: " + c.entity
+                    : "Курица сохранена, но пока не найдена. Повторный спавн запрещён: " + c.entity));
+                return existing != null ? 1 : 0;
+            }
             return spawnChicken(owner, c);
         }
         if (command.equals("spawn") || command.equals("respawn")) {
