@@ -99,6 +99,7 @@ public final class MarkAIMod implements ModInitializer {
     private final Map<UUID, AISession> aiSessions = new HashMap<>();
     private final LivingCompanionRuntime livingRuntime = new LivingCompanionRuntime(this::memoryEnabled);
     private final WolfWorkRuntime wolfWork = new WolfWorkRuntime();
+    private final ChickenCompanionRuntime chickenRuntime = new ChickenCompanionRuntime();
     private final Map<UUID, Integer> memoryPages = new HashMap<>();
     private final Map<UUID, Long> ownerAutomaticAt = new HashMap<>();
     private final Map<UUID, Long> attackMissNoticeAt = new HashMap<>();
