@@ -1029,8 +1029,17 @@ public final class MarkAIMod implements ModInitializer {
     private String uiSnapshot(ServerPlayer owner) {
         var available = new ArrayList<Map<String, Object>>();
         for (Companion member : companions.owned(owner.getUUID())) {
-            available.add(Map.of("id", member.id.toString(), "name", member.living.name,
-                "species", member.species, "dead", member.dead));
+            Wolf rosterWolf = find(member);
+            var summary = new LinkedHashMap<String, Object>();
+            summary.put("id", member.id.toString());
+            summary.put("entity_uuid", member.entity.toString());
+            summary.put("name", member.living.name);
+            summary.put("species", member.species);
+            summary.put("dead", member.dead);
+            summary.put("activity", member.dead ? "DEAD" : rosterWolf == null ? "UNLOADED" : member.action);
+            summary.put("health", rosterWolf == null ? 0 : rosterWolf.getHealth());
+            summary.put("max_health", rosterWolf == null ? 40 : rosterWolf.getMaxHealth());
+            available.add(summary);
         }
         Companion c = companions.selected(owner.getUUID());
         if (c == null) return CHAT_JSON.toJson(Map.of("name", "Марк", "activity", "NOT_CREATED",
