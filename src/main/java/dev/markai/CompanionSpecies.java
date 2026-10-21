@@ -6,8 +6,8 @@ import java.util.Optional;
 /**
  * Canonical species metadata and capability boundary for persistent companions.
  *
- * A species may be recognized before its entity runtime is implemented. In that
- * case it must remain unavailable to save restoration and entity execution.
+ * Species capabilities are explicit: Chicken has its own minimal follow runtime,
+ * but deliberately does not inherit wolf combat, inventory or trick behavior.
  */
 public enum CompanionSpecies {
     WOLF("minecraft:wolf", true, true, true, true),
