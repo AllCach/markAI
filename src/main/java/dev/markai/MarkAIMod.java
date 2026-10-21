@@ -556,7 +556,8 @@ public final class MarkAIMod implements ModInitializer {
         }
         companion.following = !wolf.isOrderedToSit(); companion.memory.bind(companion.id);
         remember(companion, wolf, (ServerLevel) wolf.level()); companions.add(companion);
-        companions.select(owner.getUUID(), companion.id);
+        // A new tame joins the owner's roster without stealing focus from Walk.
+        // The registry selects it automatically only when this is the first companion.
         configure(companion, wolf); save();
         return wolfNotice(owner, companion.living.name + " стал твоим компаньоном. Shift + ПКМ — сумка; /walk attack — атаковать цель; /walk collect — собрать предметы.", true);
     }
