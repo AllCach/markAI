@@ -1753,15 +1753,16 @@ public final class MarkAIMod implements ModInitializer {
             return performed;
         }
         Companion c = selected;
-        Wolf wolf = c == null ? null : find(c);
-        if (wolf == null || !owner.isAlive() || owner.isSpectator() || wolf.level() != owner.level() || wolf.distanceTo(owner) > 32) {
+        Wolf wolf = c == null || CompanionSpecies.CHICKEN.id().equals(c.species) ? null : find(c);
+        LivingEntity entity = c == null ? null : CompanionSpecies.CHICKEN.id().equals(c.species) ? findChicken(c) : wolf;
+        if (entity == null || !owner.isAlive() || owner.isSpectator() || entity.level() != owner.level() || entity.distanceTo(owner) > 32) {
             owner.sendSystemMessage(Component.literal("Компаньон должен быть жив и загружен рядом с вами. Проверьте /mark status."));
             return 0;
         }
         if (automatic && (!c.living.settings.autochat || c.dismissed || c.trick != null)) return 0;
         AISession session = aiSessions.computeIfAbsent(c.id, key -> new AISession());
         if (!automatic) {
-            ambient(c).defer(wolf.level().getGameTime(), aiConfig == null ? 60 : aiConfig.automaticConversationSeconds);
+            ambient(c).defer(entity.level().getGameTime(), aiConfig == null ? 60 : aiConfig.automaticConversationSeconds);
             if (session.pending != null && session.pendingAutomatic) {
                 invalidate(session); session.nextRequest = 0;
             }
@@ -1775,14 +1776,18 @@ public final class MarkAIMod implements ModInitializer {
         CompanionAction parsed = automatic || namesAnotherCompanion || commandChat ? null : IntentParser.parse(message);
         if (parsed != null) {
             int performed = performAction(c, owner, parsed);
-            if (memoryEnabled()) c.memory.rememberExchange(message, new OllamaClient.Reply("say", c.living.lastAction.message()), wolf.level().getGameTime());
+            if (memoryEnabled()) c.memory.rememberExchange(message, new OllamaClient.Reply("say", c.living.lastAction.message()), entity.level().getGameTime());
             save(); return performed;
         }
         if (!session.enabled || ollama == null) {
             String reason = !session.enabled ? "ИИ выключен" : "модель недоступна";
             session.error = reason + ". Для ответа словами включи ИИ командой /mark ai on и проверь config/markai.json.";
-            if (!automatic && fallbackVocal(c, wolf, owner)) {
+            if (!automatic && wolf != null && fallbackVocal(c, wolf, owner)) {
                 String feedback = c.living.name + " гавкнул: " + reason + ". Для ответа словами включи ИИ командой /mark ai on и проверь config/markai.json.";
+                owner.sendSystemMessage(Component.literal(feedback));
+                CompanionNetwork.notice(owner, "status", feedback);
+            } else if (!automatic && entity instanceof Chicken) {
+                String feedback = c.living.name + " кудахчет: " + reason + ". Для ответа словами включи ИИ командой /mark ai on и проверь config/markai.json.";
                 owner.sendSystemMessage(Component.literal(feedback));
                 CompanionNetwork.notice(owner, "status", feedback);
             }
@@ -1795,13 +1800,15 @@ public final class MarkAIMod implements ModInitializer {
             if (!automatic) { owner.sendSystemMessage(Component.literal(waiting)); CompanionNetwork.notice(owner, "status", waiting); } return 0;
         }
         session.nextRequest = nowMillis + aiConfig.requestCooldownSeconds * 1000L;
-        c.nextAutomaticConversation = wolf.level().getGameTime() + Math.max(30, aiConfig.automaticConversationSeconds) * 20L;
+        c.nextAutomaticConversation = entity.level().getGameTime() + Math.max(30, aiConfig.automaticConversationSeconds) * 20L;
         if (!automatic) session.error = "";
         MinecraftServer requestServer = server;
         UUID entityUuid = c.entity;
-        var requestLevel = wolf.level();
+        var requestLevel = entity.level();
         long generation = ++session.generation;
-        DialogueContext dialogue = automatic ? ambientDialogueContext(c, wolf, owner) : dialogueContext(c, wolf, owner, message);
+        DialogueContext dialogue = CompanionSpecies.CHICKEN.id().equals(c.species)
+            ? new DialogueContext(chickenDialogueSnapshot(c, (Chicken) entity, owner), memoryEnabled() ? c.memory.history() : List.of())
+            : automatic ? ambientDialogueContext(c, wolf, owner) : dialogueContext(c, wolf, owner, message);
         String requestMessage = automatic ? AMBIENT_PROMPT : message;
         String context = dialogue.observation();
         boolean retainMemory = memoryEnabled();
@@ -1835,13 +1842,14 @@ public final class MarkAIMod implements ModInitializer {
                         journal.finish(requestId, "discarded", reply, null, "Companion changed"); return;
                     }
                     ServerPlayer currentOwner = requestServer.getPlayerList().getPlayer(c.owner);
-                    Wolf current = find(c);
-                    if (currentOwner != owner || !currentOwner.isAlive() || current == null
-                            || current.level() != requestLevel || current.level() != currentOwner.level()) {
+                    Wolf current = CompanionSpecies.CHICKEN.id().equals(c.species) ? null : find(c);
+                    LivingEntity currentEntity = CompanionSpecies.CHICKEN.id().equals(c.species) ? findChicken(c) : current;
+                    if (currentOwner != owner || !currentOwner.isAlive() || currentEntity == null
+                            || currentEntity.level() != requestLevel || currentEntity.level() != currentOwner.level()) {
                         journal.finish(requestId, "discarded", reply, null, "Owner or world changed"); return;
                     }
-                    if (automatic && (!c.living.settings.autochat || c.dismissed || current.distanceTo(currentOwner) > 12
-                            || c.trick != null || c.living.activity() == Activity.DEFEND || c.living.activity() == Activity.RETREAT)) {
+                    if (automatic && (!c.living.settings.autochat || c.dismissed || currentEntity.distanceTo(currentOwner) > 12
+                            || c.trick != null || (current != null && (c.living.activity() == Activity.DEFEND || c.living.activity() == Activity.RETREAT)))) {
                         journal.finish(requestId, "discarded", reply, null, "Automatic conversation no longer appropriate"); return;
                     }
                     if (error != null) {
@@ -1855,8 +1863,10 @@ public final class MarkAIMod implements ModInitializer {
                             : "Сейчас не могу ответить. Проверь подключение ИИ в config/markai.json.";
                         session.error = fallback;
                         if (repeated) currentOwner.sendSystemMessage(Component.literal("<" + c.living.name + "> " + fallback));
-                        else if (fallbackVocal(c, current, currentOwner))
+                        else if (current != null && fallbackVocal(c, current, currentOwner))
                             currentOwner.sendSystemMessage(Component.literal(c.living.name + " гавкнул. " + fallback));
+                        else if (currentEntity instanceof Chicken)
+                            currentOwner.sendSystemMessage(Component.literal(c.living.name + " кудахчет. " + fallback));
                         if (companions.selected(c.owner) == c) CompanionNetwork.notice(currentOwner, "error", fallback);
                         journal.finish(requestId, "failed", null, new OllamaClient.Reply("say", fallback), error.toString());
                         return;
@@ -1869,9 +1879,11 @@ public final class MarkAIMod implements ModInitializer {
                     if (automatic && !ambient(c).accept(delivered.say())) {
                         journal.finish(requestId, "suppressed_repeat", reply, null, null); return;
                     }
-                    delivered = applyReply(c, current, currentOwner, session, delivered);
+                    delivered = current == null
+                        ? applyChickenReply(c, (Chicken) currentEntity, currentOwner, delivered)
+                        : applyReply(c, current, currentOwner, session, delivered);
                     journal.finish(requestId, "applied", reply, delivered, null);
-                    if (!automatic && retainMemory && memoryEnabled()) c.memory.rememberExchange(message, delivered, current.level().getGameTime());
+                    if (!automatic && retainMemory && memoryEnabled()) c.memory.rememberExchange(message, delivered, currentEntity.level().getGameTime());
                     save();
                     if (commandChat) currentOwner.sendSystemMessage(Component.literal("<" + c.living.name + "> " + delivered.say()));
                     if (companions.selected(c.owner) == c) CompanionNetwork.notice(currentOwner, "reply", delivered.say());
@@ -2014,6 +2026,29 @@ public final class MarkAIMod implements ModInitializer {
     private static Map<String, Integer> position(Entity entity) {
         var pos = entity.blockPosition();
         return Map.of("x", pos.getX(), "y", pos.getY(), "z", pos.getZ());
+    }
+
+    private OllamaClient.Reply applyChickenReply(Companion c, Chicken chicken, ServerPlayer owner, OllamaClient.Reply reply) {
+        long now = chicken.level().getGameTime();
+        CompanionAction action = switch (reply.action()) {
+            case "follow" -> CompanionAction.FOLLOW;
+            case "come" -> CompanionAction.COME;
+            case "stay" -> CompanionAction.STAY;
+            case "rest", "idle" -> CompanionAction.IDLE;
+            default -> null;
+        };
+        if (action != null) {
+            int result = performChickenAction(c, owner, action);
+            if (result == 0 && c.living.lastAction.status() == ActionResult.Status.FAILED)
+                reply = new OllamaClient.Reply("say", c.living.lastAction.message());
+        } else if (!"say".equals(reply.action()) && !"look_at_player".equals(reply.action())) {
+            reply = new OllamaClient.Reply("say", "Я пока не умею выполнять это действие как курица-компаньон.");
+        }
+        if (!reply.say().isBlank()) {
+            owner.sendSystemMessage(Component.literal("<" + c.living.name + "> " + reply.say()));
+            c.nextMessage = now + 200;
+        }
+        return reply;
     }
 
     private OllamaClient.Reply applyReply(Companion c, Wolf wolf, ServerPlayer owner, AISession session, OllamaClient.Reply reply) {
