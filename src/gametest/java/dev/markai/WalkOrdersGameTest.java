@@ -75,6 +75,10 @@ public final class WalkOrdersGameTest {
                 && owned.getName().getString().equals("Walk") && bag(owned).getItem(4).getCount() == 7,
             "An already owned wolf is adopted in place, retaining its health, name and inventory");
         Wolf replacement = wolf(helper, 4.5, 2, 10.5); replacement.tame(owner);
+        // The original wolf at (4.5, 2, 8.5) otherwise occludes the ray to this one.
+        // Approach from the side so /walk tame actually targets the replacement wolf.
+        Vec3 side = helper.absoluteVec(new Vec3(7.5, 2, 10.5));
+        owner.setPos(side.x, side.y, side.z);
         aim(owner, replacement); command(owner, "tame");
         helper.assertTrue(companion(owner).entity.equals(owned.getUUID())
                 && ((CompanionInventoryHolder) replacement).markai$isCompanion()
