@@ -40,7 +40,8 @@ public final class MultiCompanionGameTest {
         Wolf firstWolf = (Wolf) helper.getLevel().getEntity(first.entity);
         helper.assertTrue(firstWolf != null && firstWolf.isOwnedBy(owner), "First wolf belongs to its owner");
 
-        first.memory.rememberStatement("Remember alpha_companion_secret_2026", helper.getLevel().getGameTime());
+        // Use a supported explicit fact prefix so the deterministic memory extractor stores it.
+        first.memory.rememberStatement("Запомни alpha_companion_secret_2026", helper.getLevel().getGameTime());
         command(owner, "mark spawn");
         MarkAIMod.Companion second = registry.selected(owner.getUUID());
         helper.assertTrue(second != null && second != first && !second.id.equals(first.id),
