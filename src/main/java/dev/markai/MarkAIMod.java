@@ -365,7 +365,7 @@ public final class MarkAIMod implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> {
             var root = Commands.literal("mark").executes(ctx -> {
                 ctx.getSource().sendSuccess(() -> Component.literal(
-                    "/walk tame | attack | collect | stop | spawn | follow | stay | come | rest | wander | sethome | home | summon | inventory | status | train <приём> | ask <текст> | ai on/off"), false);
+                    "/walk tame | attack | collect | stop | spawn [chicken] | follow | stay | come | rest | wander | sethome | home | summon | inventory | status | train <приём> | ask <текст> | ai on/off"), false);
                 return 1;
             });
             for (String name : List.of("spawn", "respawn", "follow", "stay", "status", "skills", "forget", "bark", "come", "fetch",
