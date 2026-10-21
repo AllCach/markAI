@@ -348,7 +348,7 @@ public final class AIGameTest {
     private static boolean pending(MarkAIMod mod, UUID owner) {
         try {
             var sessions = MarkAIMod.class.getDeclaredField("aiSessions"); sessions.setAccessible(true);
-            Object session = ((Map<?, ?>) sessions.get(mod)).get(owner);
+            Object session = ((Map<?, ?>) sessions.get(mod)).get(TestCompanions.selected(mod, owner).id);
             var field = session.getClass().getDeclaredField("pending"); field.setAccessible(true);
             return field.get(session) != null;
         } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
@@ -367,7 +367,7 @@ public final class AIGameTest {
     private static void resetCooldown(MarkAIMod mod, UUID owner) {
         try {
             var sessionsField = MarkAIMod.class.getDeclaredField("aiSessions"); sessionsField.setAccessible(true);
-            Object session = ((Map<?, ?>) sessionsField.get(mod)).get(owner);
+            Object session = ((Map<?, ?>) sessionsField.get(mod)).get(TestCompanions.selected(mod, owner).id);
             var nextRequestField = session.getClass().getDeclaredField("nextRequest"); nextRequestField.setAccessible(true);
             nextRequestField.setLong(session, 0);
         } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
@@ -375,8 +375,7 @@ public final class AIGameTest {
 
     private static MarkAIMod.Companion currentCompanion(MarkAIMod mod, UUID owner) {
         try {
-            var companionsField = MarkAIMod.class.getDeclaredField("companions"); companionsField.setAccessible(true);
-            return (MarkAIMod.Companion) ((Map<?, ?>) companionsField.get(mod)).get(owner);
+            return TestCompanions.selected(mod, owner);
         } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
     }
 

@@ -30,6 +30,7 @@ public final class CompanionNetwork {
         void cancel(ServerPlayer player);
         void deleteMemory(ServerPlayer player, String id);
         void setting(ServerPlayer player, String key, String value);
+        void select(ServerPlayer player, String companionId);
     }
     private static final class Limits {
         long refreshAt, actionAt, chatAt, rateNoticeAt;
@@ -64,6 +65,11 @@ public final class CompanionNetwork {
         public static final StreamCodec<RegistryFriendlyByteBuf, MemoryDelete> CODEC = StreamCodec.composite(ByteBufCodecs.stringUtf8(36), MemoryDelete::id, MemoryDelete::new);
         @Override public Type<MemoryDelete> type() { return TYPE; }
     }
+    public record Select(String companionId) implements CustomPacketPayload {
+        public static final Type<Select> TYPE = CompanionNetwork.type("ui_select");
+        public static final StreamCodec<RegistryFriendlyByteBuf, Select> CODEC = StreamCodec.composite(ByteBufCodecs.stringUtf8(36), Select::companionId, Select::new);
+        @Override public Type<Select> type() { return TYPE; }
+    }
     public record Setting(String key, String value) implements CustomPacketPayload {
         public static final Type<Setting> TYPE = CompanionNetwork.type("ui_setting");
         public static final StreamCodec<RegistryFriendlyByteBuf, Setting> CODEC = StreamCodec.composite(ByteBufCodecs.stringUtf8(32), Setting::key,
@@ -89,6 +95,7 @@ public final class CompanionNetwork {
         c2s.register(Request.TYPE, Request.CODEC); c2s.register(Action.TYPE, Action.CODEC);
         c2s.register(Chat.TYPE, Chat.CODEC); c2s.register(Cancel.TYPE, Cancel.CODEC);
         c2s.register(MemoryDelete.TYPE, MemoryDelete.CODEC); c2s.register(Setting.TYPE, Setting.CODEC);
+        c2s.register(Select.TYPE, Select.CODEC);
         var s2c = PayloadTypeRegistry.clientboundPlay();
         s2c.register(Snapshot.TYPE, Snapshot.CODEC); s2c.register(Notice.TYPE, Notice.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(Request.TYPE, (payload, context) -> {
@@ -118,6 +125,10 @@ public final class CompanionNetwork {
         ServerPlayNetworking.registerGlobalReceiver(MemoryDelete.TYPE, (payload, context) -> mutate(context.player(), () -> {
             if (!NetworkRules.memoryId(payload.id())) throw new IllegalArgumentException("Invalid memory id");
             backend.deleteMemory(context.player(), payload.id());
+        }));
+        ServerPlayNetworking.registerGlobalReceiver(Select.TYPE, (payload, context) -> mutate(context.player(), () -> {
+            if (!NetworkRules.companionId(payload.companionId())) throw new IllegalArgumentException("Invalid companion id");
+            backend.select(context.player(), payload.companionId());
         }));
         ServerPlayNetworking.registerGlobalReceiver(Setting.TYPE, (payload, context) -> mutate(context.player(), () -> {
             if (!NetworkRules.setting(payload.key(), payload.value())) throw new IllegalArgumentException("Invalid setting");

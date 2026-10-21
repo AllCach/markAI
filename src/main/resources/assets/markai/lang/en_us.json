@@ -12,6 +12,8 @@
     "key.markai.inventory":  "Companion: open bag",
     "markai.ui.title":  "Companion",
     "markai.ui.quick":  "Quick commands",
+    "markai.ui.previous_companion":  "Previous companion",
+    "markai.ui.next_companion":  "Next companion",
     "markai.tab.profile":  "Profile",
     "markai.tab.commands":  "Commands",
     "markai.tab.dialogue":  "Dialogue",

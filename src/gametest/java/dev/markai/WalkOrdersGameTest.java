@@ -34,7 +34,7 @@ import java.util.UUID;
 /** Real native taming, command combat and lossless item transfers, without a language model. */
 public final class WalkOrdersGameTest {
     @GameTest(structure = "markai-test:arena", maxTicks = 100)
-    public void boneTamingAdoptsTheExistingWolfWithoutReplacingAnotherCompanion(GameTestHelper helper) throws Exception {
+    public void boneTamingAdoptsTwoWolvesWithoutReplacingTheFirstCompanion(GameTestHelper helper) throws Exception {
         setup(helper); ServerPlayer owner = owner(helper); Wolf original = wolf(helper, 5, 2, 6);
         original.setCustomName(Component.literal("Walk"));
         ItemStack keepsake = new ItemStack(Items.IRON_INGOT, 3);
@@ -51,8 +51,9 @@ public final class WalkOrdersGameTest {
             "Adoption preserves the existing wolf name, item components, slot and stack size");
         Wolf second = wolf(helper, 7, 2, 6); nativeBoneTame(helper, owner, second);
         helper.assertTrue(companion(owner).entity.equals(originalId) && second.isOwnedBy(owner)
-                && !((CompanionInventoryHolder) second).markai$isCompanion(),
-            "Taming another ordinary wolf must never replace or duplicate the existing companion");
+                && ((CompanionInventoryHolder) second).markai$isCompanion()
+                && TestCompanions.registry(mod()).owned(owner.getUUID()).size() == 2,
+            "Taming a second wolf adds its own companion while preserving the original selection and physical wolf");
         helper.succeed();
     }
 
@@ -76,8 +77,9 @@ public final class WalkOrdersGameTest {
         Wolf replacement = wolf(helper, 4.5, 2, 10.5); replacement.tame(owner);
         aim(owner, replacement); command(owner, "tame");
         helper.assertTrue(companion(owner).entity.equals(owned.getUUID())
-                && !((CompanionInventoryHolder) replacement).markai$isCompanion(),
-            "Explicit adoption cannot silently replace an existing companion");
+                && ((CompanionInventoryHolder) replacement).markai$isCompanion()
+                && TestCompanions.registry(mod()).owned(owner.getUUID()).size() == 2,
+            "Explicit adoption adds the new owned wolf without changing the existing companion or selection");
         helper.succeed();
     }
 
@@ -352,7 +354,7 @@ public final class WalkOrdersGameTest {
         return (MarkAIMod) FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream().filter(m -> m instanceof MarkAIMod).findFirst().orElseThrow();
     }
     @SuppressWarnings("unchecked") private static MarkAIMod.Companion companion(ServerPlayer owner) throws Exception {
-        return ((Map<UUID, MarkAIMod.Companion>) field(MarkAIMod.class, "companions").get(mod())).get(owner.getUUID());
+        return TestCompanions.selected(mod(), owner.getUUID());
     }
     private static WolfWorkRuntime work() throws Exception { return (WolfWorkRuntime) field(MarkAIMod.class, "wolfWork").get(mod()); }
     private static Field field(Class<?> type, String name) throws Exception { Field field = type.getDeclaredField(name); field.setAccessible(true); return field; }

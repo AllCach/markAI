@@ -183,7 +183,7 @@ public final class CompanionReviewGameTest {
     private static Wolf wolf(ServerLevel level, MarkAIMod.Companion c) { return (Wolf) level.getEntity(c.entity); }
     private static long livingGoals(Wolf wolf) { return ((MobAccessor)wolf).markai$goals().getAvailableGoals().stream().filter(goal -> goal.getGoal().getClass().getName().contains("LivingCompanionRuntime")).count(); }
     private static MarkAIMod mod() { return (MarkAIMod) FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream().filter(m -> m instanceof MarkAIMod).findFirst().orElseThrow(); }
-    @SuppressWarnings("unchecked") private static MarkAIMod.Companion companion(MarkAIMod mod, ServerPlayer owner) throws Exception { return ((Map<UUID, MarkAIMod.Companion>)field(MarkAIMod.class, "companions").get(mod)).get(owner.getUUID()); }
+    @SuppressWarnings("unchecked") private static MarkAIMod.Companion companion(MarkAIMod mod, ServerPlayer owner) throws Exception { return TestCompanions.selected(mod, owner.getUUID()); }
     private static CompanionNetwork.Backend backend() throws Exception { return (CompanionNetwork.Backend)field(CompanionNetwork.class, "backend").get(null); }
     private static Field field(Class<?> type, String name) throws Exception { Field field = type.getDeclaredField(name); field.setAccessible(true); return field; }
 }

@@ -214,9 +214,7 @@ public final class LivingCompanionGameTest {
     private static MarkAIMod.Companion companion(ServerPlayer owner) throws Exception {
         var mod = FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream()
             .filter(m -> m instanceof MarkAIMod).findFirst().orElseThrow();
-        var field = MarkAIMod.class.getDeclaredField("companions"); field.setAccessible(true);
-        @SuppressWarnings("unchecked") var companions = (Map<UUID, MarkAIMod.Companion>) field.get(mod);
-        return companions.get(owner.getUUID());
+        return TestCompanions.selected(mod, owner.getUUID());
     }
     private static CompanionNetwork.Backend backend() throws Exception {
         var field = CompanionNetwork.class.getDeclaredField("backend"); field.setAccessible(true);

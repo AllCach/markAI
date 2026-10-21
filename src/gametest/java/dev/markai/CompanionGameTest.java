@@ -172,10 +172,8 @@ public final class CompanionGameTest {
         saved.chunkX = previous.chunkPosition().x(); saved.chunkZ = previous.chunkPosition().z();
         saved.following = false;
         MarkAIMod mod = mod();
-        var companionsField = MarkAIMod.class.getDeclaredField("companions");
-        companionsField.setAccessible(true);
-        @SuppressWarnings("unchecked") Map<UUID, MarkAIMod.Companion> companions = (Map<UUID, MarkAIMod.Companion>) companionsField.get(mod);
-        companions.put(owner.getUUID(), saved);
+        saved.id = UUID.randomUUID();
+        TestCompanions.registry(mod).add(saved);
         var save = MarkAIMod.class.getDeclaredMethod("save"); save.setAccessible(true); save.invoke(mod);
 
         server.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark status");

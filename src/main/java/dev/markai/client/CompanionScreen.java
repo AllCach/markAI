@@ -9,6 +9,7 @@ import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.input.KeyEvent;
@@ -30,9 +31,12 @@ public final class CompanionScreen extends Screen {
     private int left, top, panelWidth, panelHeight, contentTop, contentBottom;
     private int conversationScroll, memoryOffset, detailScroll, profileScroll;
     private String selectedMemory = "", draft = "", renameDraft;
+    private String companionId = MarkAIClient.STATE.companionId(), requestedCompanion = "";
+    private long selectionRequestedAt;
     private boolean traitPage;
     private EditBox input, rename;
     private Button sendButton, deleteButton, renameButton;
+    private Button previousCompanion, nextCompanion;
     private final List<Button> memoryButtons = new ArrayList<>();
     private final List<Button> settingButtons = new ArrayList<>();
     private final List<Button> traitButtons = new ArrayList<>();
@@ -46,6 +50,7 @@ public final class CompanionScreen extends Screen {
     private ClientCompanionState state() { return MarkAIClient.STATE; }
 
     @Override protected void init() {
+        if (!companionId.equals(state().companionId())) resetCompanionDrafts();
         rememberDraft();
         panelWidth = Math.max(260, Math.min(760, width - 16));
         panelHeight = Math.max(190, Math.min(470, height - 16));
@@ -55,6 +60,10 @@ public final class CompanionScreen extends Screen {
         input = null; rename = null; sendButton = null; deleteButton = null; renameButton = null;
         memoryButtons.clear(); settingButtons.clear(); traitButtons.clear();
         addButton("×", left + panelWidth - 29, top + 8, 20, () -> minecraft.gui.setScreen(null));
+        previousCompanion = addButton("‹", left + panelWidth - 79, top + 8, 20, () -> selectCompanion(-1));
+        previousCompanion.setTooltip(Tooltip.create(tr("markai.ui.previous_companion")));
+        nextCompanion = addButton("›", left + panelWidth - 56, top + 8, 20, () -> selectCompanion(1));
+        nextCompanion.setTooltip(Tooltip.create(tr("markai.ui.next_companion")));
         if (!quick) {
             int tabWidth = (panelWidth - 20) / Tab.values().length;
             for (Tab destination : Tab.values()) {
@@ -79,6 +88,33 @@ public final class CompanionScreen extends Screen {
     private void rememberDraft() {
         if (input != null) draft = input.getValue();
         if (rename != null) renameDraft = rename.getValue();
+    }
+    /** Drafts and memory selection belong to one companion, including after a server-side selection. */
+    public void selectionUpdated() {
+        if (companionId.equals(state().companionId())) return;
+        resetCompanionDrafts();
+        clearWidgets(); init();
+    }
+    private void resetCompanionDrafts() {
+        companionId = state().companionId(); requestedCompanion = "";
+        draft = ""; renameDraft = null; selectedMemory = "";
+        conversationScroll = 0; memoryOffset = 0; detailScroll = 0; profileScroll = 0;
+        input = null; rename = null;
+    }
+    private int companionIndex() {
+        var companions = state().companions();
+        for (int i = 0; i < companions.size(); i++) {
+            if (ClientCompanionState.string(companions.get(i).getAsJsonObject(), "id", "").equals(state().companionId())) return i;
+        }
+        return -1;
+    }
+    private void selectCompanion(int direction) {
+        var companions = state().companions();
+        if (companions.size() < 2 || !requestedCompanion.isBlank()) return;
+        int index = companionIndex();
+        int target = index < 0 ? (direction > 0 ? 0 : companions.size() - 1) : Math.floorMod(index + direction, companions.size());
+        String id = ClientCompanionState.string(companions.get(target).getAsJsonObject(), "id", "");
+        if (MarkAIClient.select(id)) { requestedCompanion = id; selectionRequestedAt = System.nanoTime(); updateLabels(); }
     }
     private Button addButton(String text, int x, int y, int w, Runnable action) {
         return addRenderableWidget(Button.builder(Component.literal(text), button -> action.run()).bounds(x, y, w, 20).build());
@@ -173,8 +209,12 @@ public final class CompanionScreen extends Screen {
         rename.setMaxLength(32); rename.setHint(tr("markai.ui.name")); rename.setValue(renameDraft == null ? state().string("name", "Mark") : renameDraft);
         renameButton = addButton(label("markai.ui.rename"), left + panelWidth - 90, contentTop + 54, 80, () -> MarkAIClient.setting("name", rename.getValue()));
     }
-    @Override public void tick() { updateLabels(); }
+    @Override public void tick() { selectionUpdated(); updateLabels(); }
     private void updateLabels() {
+        if (requestedCompanion.equals(state().companionId()) || System.nanoTime() - selectionRequestedAt > 2_000_000_000L) requestedCompanion = "";
+        boolean canSelect = MarkAIClient.available() && state().companions().size() > 1 && requestedCompanion.isBlank();
+        if (previousCompanion != null) previousCompanion.active = canSelect;
+        if (nextCompanion != null) nextCompanion.active = canSelect;
         if (sendButton != null) sendButton.active = MarkAIClient.available() && state().bool("can_chat", true) && NetworkRules.chat(input.getValue());
         if (renameButton != null) renameButton.active = MarkAIClient.available() && NetworkRules.setting("name", rename.getValue());
         if (deleteButton != null) deleteButton.active = NetworkRules.memoryId(selectedMemory);
@@ -232,9 +272,12 @@ public final class CompanionScreen extends Screen {
         graphics.fill(0, 0, width, height, 0x9910181B);
         graphics.fill(left, top, left + panelWidth, top + panelHeight, 0xF0192528);
         graphics.outline(left, top, panelWidth, panelHeight, 0xFF426152);
-        graphics.text(font, title, left + 12, top + 14, WHITE);
+        graphics.text(font, font.plainSubstrByWidth(title.getString(), 94), left + 12, top + 14, WHITE);
         String name = state().string("name", "Mark");
-        graphics.text(font, font.plainSubstrByWidth(name + " · " + localizedState("activity", state().string("activity", "IDLE")), panelWidth - 156), left + 116, top + 14, ACCENT);
+        int index = companionIndex();
+        String selected = (index < 0 ? "" : (index + 1) + "/" + state().companions().size() + " ") + name;
+        if (panelWidth >= 550) selected += " · " + localizedState("activity", state().string("activity", "IDLE"));
+        graphics.text(font, font.plainSubstrByWidth(selected, panelWidth - 202), left + 116, top + 14, ACCENT);
         switch (tab) {
             case PROFILE -> drawProfile(graphics, mouseX, mouseY);
             case COMMANDS -> { }

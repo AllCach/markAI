@@ -39,7 +39,11 @@ public final class MarkAIClient implements ClientModInitializer {
         commandKey("stay", InputConstants.KEY_N, category);
         commandKey("follow", InputConstants.KEY_M, category);
         commandKey("inventory", InputConstants.KEY_I, category);
-        ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.Snapshot.TYPE, (payload, context) -> STATE.update(payload.json()));
+        ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.Snapshot.TYPE, (payload, context) -> {
+            STATE.update(payload.json());
+            refreshPreview(Minecraft.getInstance());
+            if (Minecraft.getInstance().gui.screen() instanceof CompanionScreen screen) screen.selectionUpdated();
+        });
         ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.Notice.TYPE, (payload, context) -> STATE.notice(payload.kind(), payload.text()));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.player == null || client.level == null) {
@@ -89,6 +93,7 @@ public final class MarkAIClient implements ClientModInitializer {
         else STATE.notice("error", Component.translatable("markai.ui.no_server").getString());
     }
     public static void action(String action) { if (NetworkRules.action(action)) send(new CompanionNetwork.Action(action)); }
+    public static boolean select(String companionId) { return NetworkRules.companionId(companionId) && send(new CompanionNetwork.Select(companionId)); }
     public static boolean chat(String message) {
         if (NetworkRules.chat(message) && send(new CompanionNetwork.Chat(message))) {
             STATE.notice("status", Component.translatable("markai.ui.sent").getString());

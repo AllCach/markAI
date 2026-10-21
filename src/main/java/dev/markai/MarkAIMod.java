@@ -11,6 +11,8 @@ import dev.markai.ai.LlmProvider;
 import dev.markai.ai.AmbientConversation;
 import dev.markai.actions.*;
 import dev.markai.core.*;
+import dev.markai.companion.CompanionRegistry;
+import dev.markai.companion.CompanionStore;
 import dev.markai.behavior.Activity;
 import dev.markai.events.WorldEvent;
 import dev.markai.network.CompanionNetwork;
@@ -82,7 +84,8 @@ public final class MarkAIMod implements ModInitializer {
         + "Коротко отреагируй на свежую обстановку, событие или настроение из текущего снимка. "
         + "Не продолжай старый разговор и не повторяй recent_lines. Не придумывай близость дома, "
         + "не отдавай команды игроку и не обещай новое действие. Только action=say, без вопроса.]";
-    private final Map<UUID, Companion> companions = new HashMap<>();
+    private final CompanionRegistry<Companion> companions = new CompanionRegistry<>(c -> c.id, c -> c.owner, c -> c.entity);
+    private final CompanionStore<Companion> companionStore = new CompanionStore<>(Companion.class);
     private final Set<UUID> configured = new HashSet<>();
     private MinecraftServer server;
     private int ticks;
@@ -94,6 +97,7 @@ public final class MarkAIMod implements ModInitializer {
     private final LivingCompanionRuntime livingRuntime = new LivingCompanionRuntime(this::memoryEnabled);
     private final WolfWorkRuntime wolfWork = new WolfWorkRuntime();
     private final Map<UUID, Integer> memoryPages = new HashMap<>();
+    private final Map<UUID, Long> ownerAutomaticAt = new HashMap<>();
 
     private static final class AISession {
         boolean enabled = true;
@@ -111,6 +115,7 @@ public final class MarkAIMod implements ModInitializer {
         UUID id;
         UUID owner;
         UUID entity;
+        String species = "minecraft:wolf";
         String dimension;
         int chunkX, chunkZ;
         boolean dead;
@@ -154,9 +159,10 @@ public final class MarkAIMod implements ModInitializer {
                 catch (Exception error) { CompanionNetwork.notice(player, "error", "Команда не выполнена; см. журнал сервера."); LOG.warn("Companion UI command failed", error); }
             }
             public void chat(ServerPlayer player, String message) { ask(player, message); }
+            public void select(ServerPlayer player, String id) { selectCompanion(player, id); }
             public void cancel(ServerPlayer player) { cancelRequest(player); }
             public void deleteMemory(ServerPlayer player, String id) {
-                Companion c = companions.get(player.getUUID());
+                Companion c = companions.selected(player.getUUID());
                 if (c != null && NetworkRules.memoryId(id)) {
                     UUID target = UUID.fromString(id);
                     var forgotten = c.memory.inspect().stream().filter(entry -> entry.id().equals(target)).findFirst();
@@ -176,7 +182,7 @@ public final class MarkAIMod implements ModInitializer {
             configured.clear();
             ticks = 0;
             aiSessions.clear();
-            memoryPages.clear(); livingRuntime.clear(); wolfWork.clear();
+            memoryPages.clear(); ownerAutomaticAt.clear(); livingRuntime.clear(); wolfWork.clear();
             chatJournal = new ChatJournal(FabricLoader.getInstance().getGameDir().resolve("logs"));
             try {
                 aiConfig = AIConfig.load(FabricLoader.getInstance().getConfigDir().resolve("markai.json"));
@@ -190,19 +196,24 @@ public final class MarkAIMod implements ModInitializer {
             Path path = statePath();
             if (Files.exists(path)) {
                 try {
-                    Companion[] saved = JSON.fromJson(Files.readString(path), Companion[].class);
-                    if (saved == null) throw new IOException("Empty state file");
-                    for (Companion c : saved) {
-                        if (c.owner == null || c.entity == null || c.dimension == null)
+                    var saved = companionStore.read(path);
+                    var restored = new CompanionRegistry<Companion>(c -> c.id, c -> c.owner, c -> c.entity);
+                    for (Companion c : saved.companions()) {
+                        if (c == null || c.owner == null || c.entity == null || c.dimension == null)
                             throw new IOException("Invalid companion state");
+                        if (c.species == null) c.species = "minecraft:wolf";
+                        if (!c.species.equals("minecraft:wolf")) throw new IOException("Unsupported companion species");
                         if (c.memory == null) c.memory = new CompanionMemory();
                         if (c.training == null) c.training = new DogTraining();
                         if (c.living == null) c.living = new LivingState();
                         if (c.id == null) c.id = c.entity;
                         c.living.normalize(); c.memory.bind(c.id);
                         c.memory.normalize(); c.training.normalize();
-                        companions.put(c.owner, c);
+                        restored.add(c);
                     }
+                    restored.restoreSelections(saved.selected());
+                    for (Companion c : restored.values()) companions.add(c);
+                    companions.restoreSelections(restored.selections());
                 } catch (Exception e) {
                     storageHealthy = false;
                     LOG.error("Cannot load MarkAI state; spawning disabled to prevent duplicates", e);
@@ -222,17 +233,16 @@ public final class MarkAIMod implements ModInitializer {
             CompanionMemory.shutdownWorkers();
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
-            companions.clear(); configured.clear(); livingRuntime.clear(); wolfWork.clear(); memoryPages.clear(); server = null;
+            companions.clear(); configured.clear(); livingRuntime.clear(); wolfWork.clear(); memoryPages.clear(); ownerAutomaticAt.clear(); server = null;
         });
         ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
-            AISession ownerSession = aiSessions.get(entity.getUUID());
-            if (ownerSession != null) invalidate(ownerSession);
+            invalidateOwnerSessions(entity.getUUID());
             for (Companion c : companions.values()) if (entity.getUUID().equals(c.entity)) {
                 wolfWork.remove(c.entity);
                 cancelTrick(c);
                 remember(c, entity, level); configured.remove(c.entity); save();
                 livingRuntime.remove(c.entity);
-                AISession session = aiSessions.get(c.owner);
+                AISession session = aiSessions.get(c.id);
                 if (session != null) invalidate(session);
             }
         });
@@ -243,12 +253,11 @@ public final class MarkAIMod implements ModInitializer {
                 if (witness != null && witness.level() == entity.level() && witness.distanceTo(entity) <= 16)
                     livingRuntime.event(c, witness, WorldEvent.Type.PLAYER_DIED, "Хозяин погиб рядом со мной.", 20);
             }
-            AISession ownerSession = aiSessions.get(entity.getUUID());
-            if (ownerSession != null) invalidate(ownerSession);
+            invalidateOwnerSessions(entity.getUUID());
             for (Companion c : companions.values()) if (entity.getUUID().equals(c.entity)) {
                 wolfWork.remove(c.entity);
                 c.dead = true; configured.remove(c.entity); save();
-                AISession session = aiSessions.get(c.owner);
+                AISession session = aiSessions.get(c.id);
                 if (session != null) invalidate(session);
             }
             if (entity instanceof Enemy) for (Companion c : companions.values()) {
@@ -278,7 +287,7 @@ public final class MarkAIMod implements ModInitializer {
         ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> {
             String text = message.signedContent().strip();
             String lower = text.toLowerCase(Locale.ROOT);
-            Companion named = companions.get(sender.getUUID());
+            Companion named = companions.selected(sender.getUUID());
             if (named != null && named.living != null) {
                 String custom = named.living.name.toLowerCase(Locale.ROOT);
                 if (lower.startsWith(custom + ",") || lower.startsWith(custom + ":")) {
@@ -295,12 +304,12 @@ public final class MarkAIMod implements ModInitializer {
         UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
             if (!level.isClientSide() && !player.isShiftKeyDown() && hand == InteractionHand.MAIN_HAND
                     && entity instanceof Wolf wolf && player instanceof ServerPlayer owner) {
-                Companion c = companions.get(owner.getUUID());
+                Companion c = companions.selected(owner.getUUID());
                 if (c != null && c.entity.equals(wolf.getUUID()) && wolf.isOwnedBy(owner)) {
                     wolfWork.cancel(c, wolf);
                     c.requestedAction = null; c.automaticSit = false;
                     c.living.behavior.cancel(level.getGameTime());
-                    AISession session = aiSessions.get(c.owner); if (session != null) invalidate(session);
+                    AISession session = aiSessions.get(c.id); if (session != null) invalidate(session);
                     if (owner.getMainHandItem().is(ItemTags.WOLF_FOOD) && wolf.getHealth() < wolf.getMaxHealth())
                         livingRuntime.event(c, wolf, WorldEvent.Type.OWNER_HEALED_WOLF, "Хозяин покормил меня, когда я был ранен.", 3);
                     else if (owner.getMainHandItem().isEmpty()) livingRuntime.event(c, wolf, WorldEvent.Type.OWNER_AFFECTION, "Хозяин уделил мне внимание.", 1);
@@ -315,7 +324,7 @@ public final class MarkAIMod implements ModInitializer {
             // The synced marker lets the client suppress feeding/sitting before the menu arrives.
             if (level.isClientSide()) return InteractionResult.CONSUME;
             if (!(player instanceof ServerPlayer owner)) return InteractionResult.FAIL;
-            Companion c = companions.get(owner.getUUID());
+            Companion c = companions.selected(owner.getUUID());
             if (!storageHealthy || c == null || c.dead || !c.entity.equals(wolf.getUUID()) || !wolf.isAlive()
                     || !wolf.isOwnedBy(owner) || owner.level() != wolf.level() || owner.distanceToSqr(wolf) > 64) {
                 owner.sendSystemMessage(Component.literal("Сумка доступна только хозяину рядом с живым компаньоном."));
@@ -361,7 +370,7 @@ public final class MarkAIMod implements ModInitializer {
             owner.sendSystemMessage(Component.literal("MarkAI: ошибка файла состояния; см. журнал. Создание отключено."));
             return 0;
         }
-        Companion c = companions.get(owner.getUUID());
+        Companion c = companions.selected(owner.getUUID());
         if (command.equals("tame")) {
             LivingEntity lookedAt = pointedLiving(owner, 8);
             if (!(lookedAt instanceof Wolf wolf)) {
@@ -411,8 +420,8 @@ public final class MarkAIMod implements ModInitializer {
             }
             c.memory.bind(c.id);
             remember(c, wolf, level);
-            companions.put(c.owner, c);
-            AISession previous = aiSessions.remove(c.owner);
+            companions.add(c);
+            AISession previous = aiSessions.remove(c.id);
             if (previous != null) invalidate(previous);
             configure(c, wolf);
             save();
@@ -423,14 +432,14 @@ public final class MarkAIMod implements ModInitializer {
             owner.sendSystemMessage(Component.literal("Сначала выполните /mark spawn.")); return 0;
         }
         if (command.equals("memory_prev") || command.equals("memory_next")) {
-            int current = memoryPages.getOrDefault(c.owner, 0);
-            memoryPages.put(c.owner, Math.max(0, current + (command.endsWith("next") ? 1 : -1)));
+            int current = memoryPages.getOrDefault(c.id, 0);
+            memoryPages.put(c.id, Math.max(0, current + (command.endsWith("next") ? 1 : -1)));
             return 1;
         }
         if (command.equals("cancel") || command.equals("stop")) { cancelRequest(owner); return 1; }
         if (command.equals("attack") || command.equals("collect")) return startWolfOrder(c, owner, command);
         if (command.equals("debug") || command.equals("brain") || command.equals("mood") || command.equals("memory")) {
-            AISession session = aiSessions.get(c.owner);
+            AISession session = aiSessions.get(c.id);
             owner.sendSystemMessage(Component.literal(command.equals("memory") ? CHAT_JSON.toJson(c.memory.inspect())
                 : command.equals("mood") ? CHAT_JSON.toJson(c.living.emotions.context())
                 : command.equals("debug") ? CHAT_JSON.toJson(Map.of("state", c.living.context(), "perception", livingRuntime.observer.metrics(), "runtime", livingRuntime.debug(c, find(c)),
@@ -473,7 +482,7 @@ public final class MarkAIMod implements ModInitializer {
         if (command.equals("skills")) {
             owner.sendSystemMessage(Component.literal(c.training.status()));
         } else if (command.equals("forget")) {
-            invalidate(aiSessions.computeIfAbsent(c.owner, key -> new AISession()));
+            invalidate(aiSessions.computeIfAbsent(c.id, key -> new AISession()));
             c.memory.clear(); c.living.events.clear(); save();
             owner.sendSystemMessage(Component.literal(c.living.name + ": память разговоров и приключений очищена. Навыки сохранены."));
         } else if (List.of("bark", "come", "fetch").contains(command)) {
@@ -496,7 +505,7 @@ public final class MarkAIMod implements ModInitializer {
         if (!wolf.isTame() || !wolf.isOwnedBy(owner)) {
             return wolfNotice(owner, "Сначала приручи дикого волка костями. Чужих питомцев присвоить нельзя.", false);
         }
-        Companion previous = companions.get(owner.getUUID());
+        Companion previous = companions.selected(owner.getUUID());
         if (previous != null && !previous.dead) {
             if (previous.entity.equals(wolf.getUUID())) {
                 configure(previous, wolf);
@@ -519,8 +528,8 @@ public final class MarkAIMod implements ModInitializer {
             companion.living.settings.hud = aiConfig.hudVisible;
         }
         companion.following = !wolf.isOrderedToSit(); companion.memory.bind(companion.id);
-        remember(companion, wolf, (ServerLevel) wolf.level()); companions.put(companion.owner, companion);
-        AISession oldSession = aiSessions.remove(companion.owner); if (oldSession != null) invalidate(oldSession);
+        remember(companion, wolf, (ServerLevel) wolf.level()); companions.add(companion);
+        AISession oldSession = aiSessions.remove(companion.id); if (oldSession != null) invalidate(oldSession);
         configure(companion, wolf); save();
         return wolfNotice(owner, companion.living.name + " стал твоим компаньоном. Shift + ПКМ — сумка; /walk attack — атаковать цель; /walk collect — собрать предметы.", true);
     }
@@ -559,7 +568,7 @@ public final class MarkAIMod implements ModInitializer {
         if (command.equals("attack") && !CompanionCombatRules.commandTargetAllowed(wolf, owner, target)) {
             return wolfNotice(owner, "Укажи взглядом на врага или дикое животное в пределах 16 блоков. Владельца, игроков и питомцев атаковать нельзя.", false);
         }
-        cancelTrick(companion); invalidate(aiSessions.computeIfAbsent(companion.owner, key -> new AISession()));
+        cancelTrick(companion); invalidate(aiSessions.computeIfAbsent(companion.id, key -> new AISession()));
         ActionResult result = command.equals("attack") ? wolfWork.attack(companion, wolf, owner, target) : wolfWork.collect(companion, wolf, owner);
         owner.sendSystemMessage(Component.literal(companion.living.name + ": " + result.message()));
         CompanionNetwork.notice(owner, result.status() == ActionResult.Status.FAILED ? "error" : "status", result.message());
@@ -622,7 +631,7 @@ public final class MarkAIMod implements ModInitializer {
             wolf.discard();
             return null;
         }
-        AISession session = aiSessions.remove(c.owner);
+        AISession session = aiSessions.remove(c.id);
         if (session != null) invalidate(session);
         configured.remove(previousUuid);
         chicken.discard();
@@ -659,7 +668,7 @@ public final class MarkAIMod implements ModInitializer {
             c.following = !wolf.isOrderedToSit();
             c.requestedAction = null; c.automaticSit = false; c.dismissed = false;
             c.living.behavior.cancel(level.getGameTime());
-            AISession previous = aiSessions.get(c.owner);
+            AISession previous = aiSessions.get(c.id);
             if (previous != null) invalidate(previous);
             save();
         }
@@ -672,7 +681,7 @@ public final class MarkAIMod implements ModInitializer {
         if (c.living.settings.autochat && aiConfig != null && aiConfig.automaticConversationSeconds > 0 && now >= c.nextAutomaticConversation && wolf.distanceTo(owner) <= 12
                 && c.trick == null && c.living.activity() != Activity.DEFEND && c.living.activity() != Activity.RETREAT) {
             c.nextAutomaticConversation = now + 20;
-            AISession session = aiSessions.get(c.owner);
+            AISession session = aiSessions.get(c.id);
             if (ollama != null && (session == null || session.enabled && session.pending == null)
                     && aiSessions.values().stream().noneMatch(s -> s.pending != null)
                     && (session == null || System.currentTimeMillis() >= session.nextRequest)
@@ -682,7 +691,7 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private int train(ServerPlayer owner, String name) {
-        Companion c = companions.get(owner.getUUID());
+        Companion c = companions.selected(owner.getUUID());
         Wolf wolf = c == null ? null : find(c);
         Trick trick = Trick.parse(name);
         if (!storageHealthy || wolf == null || !owner.isAlive() || owner.isSpectator() || owner.level() != wolf.level()) {
@@ -725,7 +734,7 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private int performTrick(ServerPlayer owner, Trick trick) {
-        Companion c = companions.get(owner.getUUID());
+        Companion c = companions.selected(owner.getUUID());
         Wolf wolf = c == null ? null : find(c);
         if (!storageHealthy || wolf == null || !owner.isAlive() || owner.isSpectator() || owner.level() != wolf.level() || wolf.distanceTo(owner) > 32) {
             owner.sendSystemMessage(Component.literal("Компаньон должен быть загружен и находиться поблизости.")); return 0;
@@ -748,7 +757,7 @@ public final class MarkAIMod implements ModInitializer {
         }
         cancelTrick(c);
         wolfWork.cancel(c, wolf);
-        invalidate(aiSessions.computeIfAbsent(c.owner, key -> new AISession()));
+        invalidate(aiSessions.computeIfAbsent(c.id, key -> new AISession()));
         c.nextTrickAt = now + 40;
         if (trick == Trick.BARK) {
             bark(wolf);
@@ -854,7 +863,7 @@ public final class MarkAIMod implements ModInitializer {
             invalidate(session);
             session.enabled = mode.equals("on");
         }
-        Companion c = companions.get(owner.getUUID());
+        Companion c = companions.selected(owner.getUUID());
         String name = c == null ? "Компаньон" : c.living.name;
         owner.sendSystemMessage(Component.literal(name + ": ИИ " + (session.enabled ? "включён" : "выключен")
             + ", модель=" + (aiConfig == null ? "ошибка конфига" : aiConfig.effectiveModel())
@@ -878,7 +887,7 @@ public final class MarkAIMod implements ModInitializer {
         Wolf wolf = find(c);
         if (wolf == null) { owner.sendSystemMessage(Component.literal("Компаньон не загружен. /mark summon")); return 0; }
         wolfWork.cancel(c, wolf);
-        cancelTrick(c); invalidate(aiSessions.computeIfAbsent(c.owner, key -> new AISession()));
+        cancelTrick(c); invalidate(aiSessions.computeIfAbsent(c.id, key -> new AISession()));
         ActionResult result = livingRuntime.request(c, wolf, owner, action);
         owner.sendSystemMessage(Component.literal(c.living.name + ": " + result.message()));
         CompanionNetwork.notice(owner, result.status() == ActionResult.Status.FAILED ? "error" : "status", result.message());
@@ -887,7 +896,7 @@ public final class MarkAIMod implements ModInitializer {
 
     private void cancelRequest(ServerPlayer owner) {
         AISession session = aiSessions.get(owner.getUUID()); if (session != null) { invalidate(session); session.error = ""; }
-        Companion c = companions.get(owner.getUUID());
+        Companion c = companions.selected(owner.getUUID());
         if (c != null) {
             cancelTrick(c); Wolf wolf = find(c);
             wolfWork.cancel(c, wolf);
@@ -916,7 +925,7 @@ public final class MarkAIMod implements ModInitializer {
             Vec3 pos = owner.position().add(offset[0], dy, offset[1]);
             if (!LivingCompanionRuntime.safePathTarget(destination, pos)
                     || !destination.noCollision(wolf, wolf.getBoundingBox().move(pos.subtract(wolf.position())))) continue;
-            cancelTrick(c); invalidate(aiSessions.computeIfAbsent(c.owner, key -> new AISession()));
+            cancelTrick(c); invalidate(aiSessions.computeIfAbsent(c.id, key -> new AISession()));
             Entity arrived = wolf.teleport(new TeleportTransition(destination, pos, Vec3.ZERO,
                 wolf.getYRot(), wolf.getXRot(), Set.of(), TeleportTransition.DO_NOTHING));
             if (arrived == null) continue;
@@ -934,7 +943,7 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private void updateSetting(ServerPlayer owner, String key, String value) {
-        Companion c = companions.get(owner.getUUID());
+        Companion c = companions.selected(owner.getUUID());
         if (c == null || !storageHealthy || !NetworkRules.setting(key, value)) return;
         var settings = c.living.settings; var traits = c.living.personality;
         double numeric = key.startsWith("trait_") ? Double.parseDouble(value) / 100 : 0;
@@ -944,7 +953,7 @@ public final class MarkAIMod implements ModInitializer {
             case "defense" -> settings.defense = Boolean.parseBoolean(value);
             case "autochat" -> {
                 settings.autochat = Boolean.parseBoolean(value);
-                AISession session = aiSessions.get(c.owner);
+                AISession session = aiSessions.get(c.id);
                 if (!settings.autochat && session != null && session.pendingAutomatic) {
                     invalidate(session); session.nextRequest = 0;
                 }
@@ -966,10 +975,10 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private String uiSnapshot(ServerPlayer owner) {
-        Companion c = companions.get(owner.getUUID());
+        Companion c = companions.selected(owner.getUUID());
         if (c == null) return CHAT_JSON.toJson(Map.of("name", "Марк", "activity", "NOT_CREATED", "ai_status", "Создайте компаньона", "messages", List.of(), "memories", List.of()));
         c.memory.flushPending(); c.living.normalize();
-        Wolf wolf = find(c); AISession session = aiSessions.get(c.owner);
+        Wolf wolf = find(c); AISession session = aiSessions.get(c.id);
         var data = new LinkedHashMap<String, Object>();
         data.put("name", c.living.name); data.put("entity_uuid", c.entity.toString()); data.put("entity_id", wolf == null ? -1 : wolf.getId());
         data.put("companion_id", c.id == null ? c.entity.toString() : c.id.toString());
@@ -992,8 +1001,8 @@ public final class MarkAIMod implements ModInitializer {
             history.add(Map.of("role", message.role(), "text", text.length() > 512 ? text.substring(0, 512) : text));
         }
         data.put("messages", history);
-        var entries = c.memory.inspect(); int page = Math.min(memoryPages.getOrDefault(c.owner, 0), Math.max(0, (entries.size() - 1) / 16));
-        memoryPages.put(c.owner, page);
+        var entries = c.memory.inspect(); int page = Math.min(memoryPages.getOrDefault(c.id, 0), Math.max(0, (entries.size() - 1) / 16));
+        memoryPages.put(c.id, page);
         data.put("memory_page", page); data.put("memory_total", entries.size());
         data.put("memories", entries.stream().skip(page * 16L).limit(16).map(e -> Map.of("id", e.id().toString(), "category", e.category(),
             "content", e.content(), "time", e.gameTime(), "source", e.sourceType().name() + "/" + e.reliability().name(), "importance", e.importance())).toList());
@@ -1014,21 +1023,21 @@ public final class MarkAIMod implements ModInitializer {
         String wolfOrder = automatic ? null : WolfOrderIntent.parse(message);
         if (wolfOrder != null) {
             int performed = performCommand(owner, wolfOrder);
-            Companion ordered = companions.get(owner.getUUID());
+            Companion ordered = companions.selected(owner.getUUID());
             if (performed != 0 && ordered != null && memoryEnabled() && (wolfOrder.equals("attack") || wolfOrder.equals("collect"))) {
                 ordered.memory.rememberExchange(message, new OllamaClient.Reply("say", ordered.living.lastAction.message()), owner.level().getGameTime());
                 save();
             }
             return performed;
         }
-        Companion c = companions.get(owner.getUUID());
+        Companion c = companions.selected(owner.getUUID());
         Wolf wolf = c == null ? null : find(c);
         if (wolf == null || !owner.isAlive() || owner.isSpectator() || wolf.level() != owner.level() || wolf.distanceTo(owner) > 32) {
             owner.sendSystemMessage(Component.literal("Компаньон должен быть жив и загружен рядом с вами. Проверьте /mark status."));
             return 0;
         }
         if (automatic && (!c.living.settings.autochat || c.dismissed || c.trick != null)) return 0;
-        AISession session = aiSessions.computeIfAbsent(c.owner, key -> new AISession());
+        AISession session = aiSessions.computeIfAbsent(c.id, key -> new AISession());
         if (!automatic) {
             ambient(c).defer(wolf.level().getGameTime(), aiConfig == null ? 60 : aiConfig.automaticConversationSeconds);
             if (session.pending != null && session.pendingAutomatic) {
@@ -1084,7 +1093,7 @@ public final class MarkAIMod implements ModInitializer {
             }
             try {
                 requestServer.execute(() -> {
-                    if (server != requestServer || aiSessions.get(c.owner) != session || session.generation != generation) {
+                    if (server != requestServer || aiSessions.get(c.id) != session || session.generation != generation) {
                         journal.finish(requestId, "discarded", reply, null, "Session changed"); return;
                     }
                     session.pending = null;
@@ -1092,7 +1101,7 @@ public final class MarkAIMod implements ModInitializer {
                     if (automatic) session.nextRequest = 0;
                     session.lastLatencyMillis = System.currentTimeMillis() - nowMillis;
                     session.cancelTrace = null;
-                    if (!session.enabled || companions.get(c.owner) != c || !entityUuid.equals(c.entity)) {
+                    if (!session.enabled || companions.get(c.id) != c || !entityUuid.equals(c.entity)) {
                         journal.finish(requestId, "discarded", reply, null, "Companion changed"); return;
                     }
                     ServerPlayer currentOwner = requestServer.getPlayerList().getPlayer(c.owner);

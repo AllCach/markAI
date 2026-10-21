@@ -68,7 +68,7 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                 ServerPlayer owner = instance.getPlayerList().getPlayer(ownerId);
                 instance.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark spawn");
                 try {
-                    var companion = (MarkAIMod.Companion) ((Map<?, ?>) field(MarkAIMod.class, "companions").get(mod)).get(ownerId);
+                    var companion = TestCompanions.selected(mod, ownerId);
                     String name = companion.living.name;
                     boolean hud = companion.living.settings.hud;
                     double loyalty = companion.living.personality.loyalty;
@@ -178,7 +178,7 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                 // Real server history produces many wrapped rows; no artificial scroll-only fixture.
                 server.runOnServer(instance -> {
                     try {
-                        var companion = (MarkAIMod.Companion) ((Map<?, ?>) field(MarkAIMod.class, "companions").get(mod)).get(ownerId);
+                        var companion = TestCompanions.selected(mod, ownerId);
                         for (int i = 0; i < 12; i++) companion.memory.rememberExchange(
                             "Проверка истории " + i + ": " + "Мы идём через берёзовый лес и обсуждаем предстоящее путешествие. ".repeat(6),
                             new OllamaClient.Reply("say", "Тестовый ответ " + i + ": "

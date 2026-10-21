@@ -18,6 +18,12 @@ public final class NetworkRules {
         return message != null && !message.isBlank() && message.length() <= 512 && message.codePoints().noneMatch(Character::isISOControl);
     }
     public static boolean memoryId(String id) {
+        return canonicalId(id);
+    }
+    public static boolean companionId(String id) {
+        return canonicalId(id);
+    }
+    private static boolean canonicalId(String id) {
         if (id == null || id.length() != 36) return false;
         try { return UUID.fromString(id).toString().equals(id); } catch (IllegalArgumentException ignored) { return false; }
     }

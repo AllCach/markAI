@@ -12,6 +12,8 @@
     "key.markai.inventory":  "Компаньон: открыть сумку",
     "markai.ui.title":  "Компаньон",
     "markai.ui.quick":  "Быстрые команды",
+    "markai.ui.previous_companion":  "Предыдущий компаньон",
+    "markai.ui.next_companion":  "Следующий компаньон",
     "markai.tab.profile":  "Профиль",
     "markai.tab.commands":  "Команды",
     "markai.tab.dialogue":  "Диалог",

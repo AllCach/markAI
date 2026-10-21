@@ -143,8 +143,6 @@ public final class TrainingGameTest {
     private static MarkAIMod.Companion companion(ServerPlayer owner) throws Exception {
         var mod = (MarkAIMod) FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream()
             .filter(m -> m instanceof MarkAIMod).findFirst().orElseThrow();
-        var field = MarkAIMod.class.getDeclaredField("companions"); field.setAccessible(true);
-        @SuppressWarnings("unchecked") var companions = (Map<java.util.UUID, MarkAIMod.Companion>) field.get(mod);
-        return companions.get(owner.getUUID());
+        return TestCompanions.selected(mod, owner.getUUID());
     }
 }

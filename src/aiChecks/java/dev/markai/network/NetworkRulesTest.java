@@ -19,8 +19,11 @@ public final class NetworkRulesTest {
         }
         check(!NetworkRules.chat(null), "Null message");
         check(NetworkRules.memoryId("f5095bb5-b54c-4c67-bc62-ab7222f5b33a"), "Canonical memory UUID");
+        check(NetworkRules.companionId("f5095bb5-b54c-4c67-bc62-ab7222f5b33a"), "Canonical companion UUID");
+        check(!NetworkRules.companionId(null), "Null companion UUID");
         for (String id : new String[]{"", "1-2-3-4-5", "F5095BB5-B54C-4C67-BC62-AB7222F5B33A", "../../world/markai.json", "f5095bb5-b54c-4c67-bc62-ab7222f5b33z"}) {
             check(!NetworkRules.memoryId(id), "Reject malformed memory id");
+            check(!NetworkRules.companionId(id), "Reject malformed companion id");
         }
         for (String key : new String[]{"hud", "defense", "autochat"}) {
             check(NetworkRules.setting(key, "true") && NetworkRules.setting(key, "false"), "Boolean setting " + key);
