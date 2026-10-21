@@ -48,9 +48,9 @@ public final class CompanionGameTest {
         helper.assertTrue(walk.getName().getString().equals("Марк"), "New companion name must be Марк");
         helper.assertTrue(!walk.isSilent(), "Companion must retain its dog sounds");
         helper.assertTrue(!((MobAccessor) walk).markai$goals().getAvailableGoals().isEmpty(), "Vanilla wolf goals must remain enabled");
-        server.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark spawn");
+        server.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark respawn");
         helper.assertTrue(level.getEntitiesOfClass(Wolf.class, owner.getBoundingBox().inflate(5)).stream()
-            .filter(wolf -> wolf.isOwnedBy(owner)).count() == 1, "Repeated spawn must not duplicate companion");
+            .filter(wolf -> wolf.isOwnedBy(owner)).count() == 1, "Respawn of a living companion must not duplicate it");
 
         server.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark stay");
         Path state = server.getWorldPath(LevelResource.ROOT).resolve("markai.json");
@@ -186,8 +186,8 @@ public final class CompanionGameTest {
         JsonObject persisted = savedCompanion(state, owner.getUUID());
         helper.assertTrue(persisted.get("entity").getAsString().equals(walk.getUUID().toString()), "Migration must persist the replacement UUID");
         helper.assertTrue(!persisted.get("following").getAsBoolean() && walk.isOrderedToSit(), "Migration must preserve the saved STAY mode");
-        server.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark spawn");
-        helper.assertTrue(level.getEntitiesOfClass(Wolf.class, owner.getBoundingBox().inflate(8)).stream().filter(wolf -> wolf.isOwnedBy(owner)).count() == 1, "Repeated spawn after migration must not duplicate the wolf");
+        server.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark respawn");
+        helper.assertTrue(level.getEntitiesOfClass(Wolf.class, owner.getBoundingBox().inflate(8)).stream().filter(wolf -> wolf.isOwnedBy(owner)).count() == 1, "Respawn after migration must not duplicate the living wolf");
         helper.succeed();
     }
 
@@ -227,7 +227,7 @@ public final class CompanionGameTest {
 
     private static JsonObject savedCompanion(Path state, UUID owner) {
         try {
-            for (var entry : JsonParser.parseString(Files.readString(state)).getAsJsonArray()) {
+            for (var entry : JsonParser.parseString(Files.readString(state)).getAsJsonObject().getAsJsonArray("companions")) {
                 JsonObject companion = entry.getAsJsonObject();
                 if (companion.get("owner").getAsString().equals(owner.toString())) return companion;
             }
