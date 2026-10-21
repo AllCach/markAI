@@ -155,7 +155,10 @@ public final class MarkAIMod implements ModInitializer {
         CompanionNetwork.registerServer(new CompanionNetwork.Backend() {
             public String snapshot(ServerPlayer player) { return uiSnapshot(player); }
             public void command(ServerPlayer player, String action) {
-                try { performCommand(player, action); }
+                try {
+                    if (action.startsWith("all:")) performGroupCommand(player, action.substring(4));
+                    else performCommand(player, action);
+                }
                 catch (Exception error) { CompanionNetwork.notice(player, "error", "Команда не выполнена; см. журнал сервера."); LOG.warn("Companion UI command failed", error); }
             }
             public void chat(ServerPlayer player, String message) { ask(player, message); }
@@ -586,6 +589,68 @@ public final class MarkAIMod implements ModInitializer {
         return result;
     }
 
+    /**
+     * A group command is one owner-scoped operation, not repeated selection changes.
+     * The look target is captured once so every eligible wolf receives the same target.
+     * Keep one save and one status result for the entire group.
+     */
+    private int performGroupCommand(ServerPlayer owner, String command) {
+        if (!NetworkRules.groupAction(command) || !storageHealthy || !owner.isAlive() || owner.isSpectator())
+            return wolfNotice(owner, "Групповая команда недоступна.", false);
+        List<Companion> owned = companions.owned(owner.getUUID());
+        if (owned.isEmpty()) return wolfNotice(owner, "У тебя нет компаньонов.", false);
+
+        LivingEntity target = command.equals("attack") ? pointedLiving(owner, 16) : null;
+        if (command.equals("attack") && target == null)
+            return wolfNotice(owner, "Для общей атаки укажи взглядом на противника в пределах 16 блоков.", false);
+
+        int accepted = 0, skipped = 0;
+        for (Companion companion : owned) {
+            Wolf wolf = find(companion);
+            if (companion.dead || wolf == null || !wolf.isAlive() || !wolf.isOwnedBy(owner)
+                    || wolf.level() != owner.level() || owner.distanceToSqr(wolf) > 256) {
+                skipped++;
+                continue;
+            }
+            if (command.equals("attack") && !CompanionCombatRules.commandTargetAllowed(wolf, owner, target)) {
+                skipped++;
+                continue;
+            }
+
+            if (command.equals("stop")) {
+                cancelCompanionAction(companion, owner);
+                accepted++;
+                continue;
+            }
+            cancelTrick(companion);
+            invalidate(aiSessions.computeIfAbsent(companion.id, key -> new AISession()));
+            ActionResult result;
+            if (command.equals("attack")) {
+                result = wolfWork.attack(companion, wolf, owner, target);
+            } else if (command.equals("collect")) {
+                result = wolfWork.collect(companion, wolf, owner);
+            } else {
+                CompanionAction action = switch (command) {
+                    case "follow" -> CompanionAction.FOLLOW;
+                    case "stay" -> CompanionAction.STAY;
+                    case "come" -> CompanionAction.COME;
+                    case "rest" -> CompanionAction.REST;
+                    case "wander" -> CompanionAction.WANDER;
+                    case "home" -> CompanionAction.RETURN_HOME;
+                    case "investigate" -> CompanionAction.INVESTIGATE;
+                    default -> throw new IllegalArgumentException("Unsupported group action");
+                };
+                wolfWork.cancel(companion, wolf);
+                result = livingRuntime.request(companion, wolf, owner, action);
+            }
+            if (result.status() == ActionResult.Status.FAILED) skipped++;
+            else accepted++;
+        }
+        if (accepted > 0) save();
+        return wolfNotice(owner, "Команда всем: " + command + " — выполнено " + accepted
+            + " из " + owned.size() + (skipped > 0 ? ", пропущено " + skipped : ""), accepted > 0);
+    }
+
     private int startWolfOrder(Companion companion, ServerPlayer owner, String command) {
         Wolf wolf = find(companion);
         if (wolf == null || !owner.isAlive() || owner.isSpectator() || wolf.level() != owner.level()
@@ -945,17 +1010,19 @@ public final class MarkAIMod implements ModInitializer {
         save(); return result.status() == ActionResult.Status.FAILED ? 0 : 1;
     }
 
+    private void cancelCompanionAction(Companion c, ServerPlayer owner) {
+        AISession session = aiSessions.get(c.id);
+        if (session != null) { invalidate(session); session.error = ""; }
+        cancelTrick(c);
+        Wolf wolf = find(c);
+        wolfWork.cancel(c, wolf);
+        if (wolf != null) livingRuntime.request(c, wolf, owner, CompanionAction.CANCEL);
+        else { c.requestedAction = null; c.living.behavior.cancel(server.getTickCount()); }
+    }
+
     private void cancelRequest(ServerPlayer owner) {
         Companion c = companions.selected(owner.getUUID());
-        AISession session = c == null ? null : aiSessions.get(c.id);
-        if (session != null) { invalidate(session); session.error = ""; }
-        if (c != null) {
-            cancelTrick(c); Wolf wolf = find(c);
-            wolfWork.cancel(c, wolf);
-            if (wolf != null) livingRuntime.request(c, wolf, owner, CompanionAction.CANCEL);
-            else { c.requestedAction = null; c.living.behavior.cancel(server.getTickCount()); }
-            save();
-        }
+        if (c != null) { cancelCompanionAction(c, owner); save(); }
         CompanionNetwork.notice(owner, "status", "Ожидание и действие отменены.");
     }
 
