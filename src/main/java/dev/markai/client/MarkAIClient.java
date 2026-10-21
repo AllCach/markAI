@@ -109,9 +109,19 @@ public final class MarkAIClient implements ClientModInitializer {
         STATE.notice("error", Component.translatable("markai.ui.no_server").getString());
         return false;
     }
-    public static Wolf preview() {
-        return preview != null && preview.isAlive() && !preview.isRemoved() && preview.level() == Minecraft.getInstance().level
-            && preview.getUUID().toString().equals(STATE.string("entity_uuid", "")) ? preview : null;
+    public static Wolf preview() { return preview(STATE.string("entity_uuid", "")); }
+
+    /** Only resolves wolves already present in the client world; never fabricates a preview. */
+    public static Wolf preview(String entityUuid) {
+        var client = Minecraft.getInstance();
+        if (client.level == null || entityUuid == null || entityUuid.isBlank()) return null;
+        if (preview != null && preview.isAlive() && !preview.isRemoved() && preview.level() == client.level
+                && preview.getUUID().toString().equals(entityUuid)) return preview;
+        for (var entity : client.level.entitiesForRendering()) {
+            if (entity instanceof Wolf wolf && wolf.isAlive() && !wolf.isRemoved()
+                    && wolf.getUUID().toString().equals(entityUuid)) return wolf;
+        }
+        return null;
     }
     private static void refreshPreview(Minecraft client) {
         if (client.level == null) { preview = null; return; }
