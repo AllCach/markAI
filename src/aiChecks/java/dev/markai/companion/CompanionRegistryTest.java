@@ -145,6 +145,29 @@ public final class CompanionRegistryTest {
             Saved huge = new Saved(owner, "Очень длинная память"); huge.memory.addProperty("large", "x".repeat(CompanionStore.MAX_BYTES));
             rejects(() -> store.write(path, List.of(huge), Map.of()), IOException.class, "Oversized write rejected before replacing the committed file");
             check(java.util.Arrays.equals(Files.readAllBytes(path), committed), "Failed write leaves the existing save byte-for-byte unchanged");
+
+            // Simulate Windows sharing violations deterministically, regardless of the host OS.
+            Path moveSource = dir.resolve("transient.tmp"), moveTarget = dir.resolve("transient.json");
+            Files.writeString(moveSource, "new state");
+            Files.writeString(moveTarget, "old state");
+            var tries = new java.util.concurrent.atomic.AtomicInteger();
+            CompanionStore.moveWithRetry(moveSource, moveTarget, (source, destination, options) -> {
+                if (tries.incrementAndGet() <= 2) throw new java.nio.file.AccessDeniedException(destination.toString());
+                Files.move(source, destination, options);
+            });
+            check(tries.get() == 3 && Files.readString(moveTarget).equals("new state")
+                && !Files.exists(moveSource), "Transient sharing violations retry and eventually commit the new state");
+
+            Files.writeString(moveSource, "unsaved state");
+            tries.set(0);
+            rejects(() -> CompanionStore.moveWithRetry(moveSource, moveTarget, (source, destination, options) -> {
+                tries.incrementAndGet();
+                throw new java.nio.file.AccessDeniedException(destination.toString());
+            }), java.nio.file.AccessDeniedException.class, "Persistent sharing violations must not be ignored");
+            check(tries.get() == 6 && Files.readString(moveTarget).equals("new state")
+                && Files.readString(moveSource).equals("unsaved state"),
+                "Exhausted retries preserve the committed save and the uncommitted source");
+
             rejects(() -> current.selected().clear(), UnsupportedOperationException.class, "Loaded selection map is immutable");
 
             Path bad = dir.resolve("bad.json");
