@@ -356,7 +356,7 @@ public final class AIGameTest {
 
     private static JsonObject savedCompanion(Path state, UUID owner) {
         try {
-            for (var entry : JsonParser.parseString(Files.readString(state)).getAsJsonArray()) {
+            for (var entry : JsonParser.parseString(Files.readString(state)).getAsJsonObject().getAsJsonArray("companions")) {
                 JsonObject companion = entry.getAsJsonObject();
                 if (companion.get("owner").getAsString().equals(owner.toString())) return companion;
             }
