@@ -18,7 +18,7 @@ public final class CompanionSpeciesTest {
 
         check(CompanionSpecies.fromId("minecraft:chicken").orElseThrow() == CompanionSpecies.CHICKEN,
                 "chicken id is recognized as a planned species");
-        check(!CompanionSpecies.CHICKEN.runtimeSupported(), "chicken cannot enter runtime before implementation");
+        check(CompanionSpecies.CHICKEN.runtimeSupported(), "chicken has its own minimal runtime");
         check(!CompanionSpecies.CHICKEN.canCombat(), "chicken does not inherit wolf combat");
         check(!CompanionSpecies.CHICKEN.hasInventory(), "chicken does not inherit wolf inventory");
         check(!CompanionSpecies.CHICKEN.canUseWolfTricks(), "chicken does not inherit wolf tricks");
