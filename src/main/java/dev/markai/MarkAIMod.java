@@ -383,6 +383,8 @@ public final class MarkAIMod implements ModInitializer {
             for (String mode : List.of("on", "off", "status"))
                 ai.then(Commands.literal(mode).executes(ctx -> aiCommand(ctx.getSource().getPlayerOrException(), mode)));
             root.then(ai);
+            root.then(Commands.literal("spawn").then(Commands.literal("chicken")
+                .executes(ctx -> command(ctx, "spawn_chicken"))));
             var registered = dispatcher.register(root);
             dispatcher.register(Commands.literal("walk").executes(registered.getCommand()).redirect(registered));
         });
@@ -404,6 +406,10 @@ public final class MarkAIMod implements ModInitializer {
                 return wolfNotice(owner, "Посмотрите на своего приручённого волка рядом. Дикому сначала дайте кости.", false);
             }
             return adoptWolf(owner, wolf);
+        }
+        if (command.equals("spawn_chicken")
+                || command.equals("respawn") && c != null && c.dead && CompanionSpecies.CHICKEN.id().equals(c.species)) {
+            return spawnChicken(owner, c);
         }
         if (command.equals("spawn") || command.equals("respawn")) {
             if (!owner.isAlive() || owner.isSpectator()) return 0;
@@ -775,7 +781,8 @@ public final class MarkAIMod implements ModInitializer {
         for (ServerLevel level : server.getAllLevels()) {
             Entity entity = level.getEntity(c.entity);
             if (entity instanceof Wolf wolf && wolf.isAlive()) return wolf;
-            if (entity instanceof Chicken chicken && chicken.isAlive() && storageHealthy)
+            if (entity instanceof Chicken chicken && chicken.isAlive() && storageHealthy
+                    && !CompanionSpecies.CHICKEN.id().equals(c.species))
                 return migrate(c, chicken, level);
         }
         return null;
@@ -811,6 +818,10 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private void tick(Companion c) {
+        if (CompanionSpecies.CHICKEN.id().equals(c.species)) {
+            tickChicken(c);
+            return;
+        }
         Wolf wolf = find(c);
         if (wolf == null) return;
         configure(c, wolf);
