@@ -37,6 +37,11 @@ public final class MultiCompanionGameTest {
         CompanionRegistry<MarkAIMod.Companion> registry = TestCompanions.registry(mod);
         CompanionNetwork.Backend backend = backend();
 
+        var dispatcher = server.getCommands().getDispatcher().getRoot();
+        helper.assertTrue(dispatcher.getChild("ma") != null && dispatcher.getChild("mo") != null
+                && dispatcher.getChild("m1") == null,
+            "The short chat commands expose /ma and /mo only; /m1 is not registered");
+
         command(owner, "mark spawn");
         MarkAIMod.Companion first = registry.selected(owner.getUUID());
         helper.assertTrue(first != null, "First spawn registers a selected companion");

@@ -123,6 +123,32 @@ public final class WalkOrdersGameTest {
             .thenSucceed();
     }
 
+    @GameTest(structure = "markai-test:arena", maxTicks = 120)
+    public void attackCapturesAnOffCenterTargetBeyondSixteenBlocks(GameTestHelper helper) throws Exception {
+        setup(helper); ServerPlayer owner = owner(helper); command(owner, "spawn");
+        var c = companion(owner); Wolf walk = companionWolf(helper, c);
+        Cow target = helper.spawn(EntityTypes.COW, new BlockPos(5, 2, 26)); target.setNoAi(true);
+        // Aim just outside the cow's vanilla hitbox; the wider selection padding should still catch it.
+        owner.lookAt(EntityAnchorArgument.Anchor.EYES, target.position().add(1.0, .2, 0));
+        command(owner, "attack");
+        helper.assertTrue(c.workActive && walk.getTarget() == target,
+            "A visible target more than 16 blocks away and slightly beside the crosshair must be captured within the 32-block radius");
+        command(owner, "stop"); helper.succeed();
+    }
+
+    @GameTest(structure = "markai-test:arena", maxTicks = 80)
+    public void repeatedAttackMissesAreRateLimited(GameTestHelper helper) throws Exception {
+        setup(helper); ServerPlayer owner = owner(helper); command(owner, "spawn");
+        @SuppressWarnings("unchecked") var notices = (Map<UUID, Long>) field(MarkAIMod.class, "attackMissNoticeAt").get(mod());
+        command(owner, "attack"); Long firstNotice = notices.get(owner.getUUID());
+        command(owner, "attack");
+        helper.assertTrue(firstNotice != null && firstNotice.equals(notices.get(owner.getUUID())),
+            "Repeated presses without a valid target must not produce another error notice during the 1.5-second cooldown");
+        helper.assertTrue(!companion(owner).workActive,
+            "A missed target must not start an attack order or send a target to the companion");
+        helper.succeed();
+    }
+
     @GameTest(structure = "markai-test:arena", maxTicks = 100)
     public void attackOrdersRejectPlayersPetsAndOccludedTargets(GameTestHelper helper) throws Exception {
         setup(helper); ServerPlayer owner = owner(helper); command(owner, "spawn");

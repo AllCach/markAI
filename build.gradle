@@ -80,6 +80,7 @@ check.dependsOn companionRegistryTest
 
 ['livingCompanionTest': 'dev.markai.brain.LivingCompanionTest',
  'actionIntentTest': 'dev.markai.actions.IntentParserTest',
+ 'privateChatCommandTest': 'dev.markai.companion.PrivateChatCommandTest',
  'wolfOrderIntentTest': 'dev.markai.actions.WolfOrderIntentTest',
  'groundedFactsTest': 'dev.markai.ai.GroundedFactsTest',
  'ambientConversationTest': 'dev.markai.ai.AmbientConversationTest',

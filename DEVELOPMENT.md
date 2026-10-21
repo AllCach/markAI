@@ -1,6 +1,6 @@
 # Разработка
 
-Текущая beta-версия 0.10.1 (`dev-beta`) установлена в локальную игру. Воспроизводимая упаковка — `betaDist verifyBetaDist`; отдельные приемочные задачи описаны в [BETA_TESTING.md](BETA_TESTING.md).
+Текущая beta-версия 0.10.2 (`dev-beta`) подготовлена к проверке и установке. Воспроизводимая упаковка — `betaDist verifyBetaDist`; отдельные приемочные задачи описаны в [BETA_TESTING.md](BETA_TESTING.md).
 
 Цель проекта — Minecraft Java 26.3, Fabric Loader 0.19.5, Fabric API 0.163.0+26.3, Java 25. Версии зафиксированы в `gradle.properties`, Gradle Wrapper использует 9.7.1. Проект работает с официальными именами классов Minecraft; примеры под другие версии и Yarn нельзя переносить без проверки.
 

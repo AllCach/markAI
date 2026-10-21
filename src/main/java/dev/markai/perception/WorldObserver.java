@@ -17,13 +17,18 @@ import java.util.*;
 public final class WorldObserver {
     private record Cached(long tick, EnvironmentSnapshot environment, List<EntityObservation> entities) {}
     private final Map<UUID, Cached> cache = new HashMap<>();
+    private int entityRadius = 32;
     private long observations, scans, totalNanos, maximumNanos;
     public void clear() { cache.clear(); observations = scans = totalNanos = maximumNanos = 0; }
     public void remove(UUID id) { cache.remove(id); }
+    public void setEntityRadius(int blocks) {
+        if (blocks < 8 || blocks > 64) throw new IllegalArgumentException("Entity radius must be between 8 and 64 blocks");
+        entityRadius = blocks; cache.clear();
+    }
     public Map<String, Object> metrics() {
         return Map.of("observations", observations, "scans", scans, "cached_observations", observations - scans,
             "mean_microseconds", observations == 0 ? 0 : totalNanos / observations / 1000.0,
-            "maximum_microseconds", maximumNanos / 1000.0, "entity_radius", 16, "entity_limit", 12,
+            "maximum_microseconds", maximumNanos / 1000.0, "entity_radius", entityRadius, "entity_limit", 12,
             "block_scan_limit", 405, "scan_interval_ticks", 20);
     }
 
@@ -35,8 +40,9 @@ public final class WorldObserver {
         if (old == null || now < old.tick || now - old.tick >= 20
                 || !old.environment.dimension().equals(level.dimension().identifier().toString())) {
             scans++;
-            var entities = level.getEntities(wolf, wolf.getBoundingBox().inflate(16),
-                    e -> e.isAlive() && !e.isInvisible() && wolf.distanceToSqr(e) <= 256 && wolf.hasLineOfSight(e))
+            double radiusSquared = (double) entityRadius * entityRadius;
+            var entities = level.getEntities(wolf, wolf.getBoundingBox().inflate(entityRadius),
+                    e -> e.isAlive() && !e.isInvisible() && wolf.distanceToSqr(e) <= radiusSquared && wolf.hasLineOfSight(e))
                 .stream().sorted(Comparator.comparingDouble(wolf::distanceToSqr)).limit(12)
                 .map(e -> new EntityObservation(e.getUUID(), BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).toString(),
                     e.getType().getDescription().getString(), e.getX(), e.getY(), e.getZ(), wolf.distanceTo(e), true, e instanceof Enemy)).toList();

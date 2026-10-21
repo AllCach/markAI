@@ -15,6 +15,7 @@ import dev.markai.companion.CompanionRegistry;
 import dev.markai.companion.CompanionStore;
 import dev.markai.companion.GroupChatState;
 import dev.markai.companion.GroupDialogueRound;
+import dev.markai.companion.PrivateChatCommand;
 import dev.markai.behavior.Activity;
 import dev.markai.events.WorldEvent;
 import dev.markai.network.CompanionNetwork;
@@ -52,6 +53,7 @@ import net.minecraft.world.entity.EntityReference;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.ai.goal.FollowOwnerGoal;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.animal.chicken.Chicken;
 import net.minecraft.world.entity.animal.wolf.Wolf;
 import net.minecraft.world.entity.monster.Enemy;
@@ -99,6 +101,7 @@ public final class MarkAIMod implements ModInitializer {
     private final WolfWorkRuntime wolfWork = new WolfWorkRuntime();
     private final Map<UUID, Integer> memoryPages = new HashMap<>();
     private final Map<UUID, Long> ownerAutomaticAt = new HashMap<>();
+    private final Map<UUID, Long> attackMissNoticeAt = new HashMap<>();
     private final Map<UUID, GroupChatState> groupStates = new LinkedHashMap<>();
     private final Map<UUID, GroupRun> groupRuns = new HashMap<>();
     private final Map<UUID, String> groupStatus = new HashMap<>();
@@ -106,9 +109,10 @@ public final class MarkAIMod implements ModInitializer {
 
     private static final class GroupRun {
         final GroupDialogueRound round;
+        final boolean chatOutput;
         CompletableFuture<OllamaClient.Reply> pending;
         String speaker = "";
-        GroupRun(GroupDialogueRound round) { this.round = round; }
+        GroupRun(GroupDialogueRound round, boolean chatOutput) { this.round = round; this.chatOutput = chatOutput; }
     }
 
     private static final class AISession {
@@ -199,12 +203,16 @@ public final class MarkAIMod implements ModInitializer {
             companions.clear();
             configured.clear();
             ticks = 0;
+            attackMissNoticeAt.clear();
             aiSessions.clear();
             groupStates.clear(); groupRuns.clear(); groupStatus.clear(); groupNextRequest.clear();
             memoryPages.clear(); ownerAutomaticAt.clear(); livingRuntime.clear(); wolfWork.clear();
+            CompanionCombatRules.setCombatRadius(32);
             chatJournal = new ChatJournal(FabricLoader.getInstance().getGameDir().resolve("logs"));
             try {
                 aiConfig = AIConfig.load(FabricLoader.getInstance().getConfigDir().resolve("markai.json"));
+                CompanionCombatRules.setCombatRadius(aiConfig.combatRadius);
+                livingRuntime.observer.setEntityRadius(aiConfig.combatRadius);
                 if (aiConfig.voiceEnabled) LOG.warn("Voice backend is not installed; dialogue and native wolf sounds remain available");
                 ollama = aiConfig.createProvider();
             } catch (Exception e) {
@@ -358,6 +366,10 @@ public final class MarkAIMod implements ModInitializer {
                 .executes(ctx -> train(ctx.getSource().getPlayerOrException(), StringArgumentType.getString(ctx, "trick")))));
             root.then(Commands.literal("ask").then(Commands.argument("message", StringArgumentType.greedyString())
                 .executes(ctx -> ask(ctx.getSource().getPlayerOrException(), StringArgumentType.getString(ctx, "message")))));
+            dispatcher.register(Commands.literal("ma").then(Commands.argument("message", StringArgumentType.greedyString())
+                .executes(ctx -> startGroupChat(ctx.getSource().getPlayerOrException(), StringArgumentType.getString(ctx, "message"), true))));
+            dispatcher.register(Commands.literal("mo").then(Commands.argument("message", StringArgumentType.greedyString())
+                .executes(ctx -> privateChat(ctx.getSource().getPlayerOrException(), StringArgumentType.getString(ctx, "message")))));
             var ai = Commands.literal("ai").executes(ctx -> aiCommand(ctx.getSource().getPlayerOrException(), "status"));
             for (String mode : List.of("on", "off", "status"))
                 ai.then(Commands.literal(mode).executes(ctx -> aiCommand(ctx.getSource().getPlayerOrException(), mode)));
@@ -574,6 +586,39 @@ public final class MarkAIMod implements ModInitializer {
         return success ? 1 : 0;
     }
 
+    private int privateChat(ServerPlayer owner, String input) {
+        if (!NetworkRules.chat(input)) {
+            CompanionNetwork.notice(owner, "error", "Сообщение должно содержать от 1 до 512 символов.");
+            return 0;
+        }
+        String message = input.strip();
+        List<Companion> roster = companions.owned(owner.getUUID());
+        PrivateChatCommand.Address address = PrivateChatCommand.parse(message,
+            roster.stream().map(c -> c.living.name).filter(Objects::nonNull).toList());
+        if (address != null) {
+            Companion recipient = roster.stream().filter(c -> c.living.name != null
+                && c.living.name.equalsIgnoreCase(address.name())).findFirst().orElse(null);
+            if (recipient != null) return ask(owner, recipient, address.message(), false, true);
+        }
+        Companion selected = companions.selected(owner.getUUID());
+        if (selected == null) {
+            CompanionNetwork.notice(owner, "error", "Сначала создай компаньона командой /mark spawn.");
+            return 0;
+        }
+        return ask(owner, selected, message, false, true);
+    }
+
+    private int attackMissNotice(ServerPlayer owner, String message) {
+        long now = System.currentTimeMillis();
+        Long previous = attackMissNoticeAt.get(owner.getUUID());
+        attackMissNoticeAt.entrySet().removeIf(entry -> now - entry.getValue() > 60_000);
+        if (previous == null || now - previous >= 1_500) {
+            attackMissNoticeAt.put(owner.getUUID(), now);
+            wolfNotice(owner, message, false);
+        }
+        return 0;
+    }
+
     /** Server-side ray picks the nearest visible living entity; a packet never supplies an attack UUID. */
     private LivingEntity pointedLiving(ServerPlayer owner, double range) {
         if (!owner.isAlive() || owner.isSpectator() || !(owner.level() instanceof ServerLevel level)) return null;
@@ -582,8 +627,11 @@ public final class MarkAIMod implements ModInitializer {
         double closest = from.distanceToSqr(blockHit.getLocation()); LivingEntity result = null;
         AABB bounds = owner.getBoundingBox().expandTowards(owner.getLookAngle().scale(range)).inflate(1);
         for (LivingEntity entity : level.getEntitiesOfClass(LivingEntity.class, bounds,
-                entity -> entity != owner && entity.isAlive() && !entity.isSpectator() && !entity.isInvisible())) {
-            AABB box = entity.getBoundingBox().inflate(.15);
+                entity -> entity != owner && entity.isAlive() && !entity.isSpectator() && !entity.isInvisible()
+                    && !(entity instanceof Wolf wolf && companions.byEntity(wolf.getUUID()) != null
+                        && companions.byEntity(wolf.getUUID()).owner.equals(owner.getUUID())))) {
+            // Give the crosshair a forgiving selection area, especially for small/flying mobs.
+            AABB box = entity.getBoundingBox().inflate(.75);
             Vec3 hit = box.contains(from) ? from : box.clip(from, to).orElse(null);
             if (hit == null) continue;
             double distance = from.distanceToSqr(hit);
@@ -606,9 +654,9 @@ public final class MarkAIMod implements ModInitializer {
         if (owned.stream().anyMatch(c -> !c.owner.equals(owner.getUUID()))) return 0;
         if (owned.isEmpty()) return wolfNotice(owner, "У тебя нет компаньонов.", false);
 
-        LivingEntity target = command.equals("attack") ? pointedLiving(owner, 16) : null;
+        LivingEntity target = command.equals("attack") ? pointedLiving(owner, CompanionCombatRules.combatRadius()) : null;
         if (command.equals("attack") && target == null)
-            return wolfNotice(owner, "Для общей атаки укажи взглядом на противника в пределах 16 блоков.", false);
+            return attackMissNotice(owner, "Для общей атаки укажи взглядом на противника в пределах " + CompanionCombatRules.combatRadius() + " блоков.");
 
         int accepted = 0, skipped = 0;
         for (Companion companion : owned) {
@@ -663,9 +711,10 @@ public final class MarkAIMod implements ModInitializer {
                 || owner.distanceToSqr(wolf) > 256) {
             return wolfNotice(owner, "Для задания нужен твой живой волк рядом, не дальше 16 блоков.", false);
         }
-        LivingEntity target = command.equals("attack") ? pointedLiving(owner, 16) : null;
+        LivingEntity target = command.equals("attack") ? pointedLiving(owner, CompanionCombatRules.combatRadius()) : null;
         if (command.equals("attack") && !CompanionCombatRules.commandTargetAllowed(wolf, owner, target)) {
-            return wolfNotice(owner, "Укажи взглядом на врага или дикое животное в пределах 16 блоков. Владельца, игроков и питомцев атаковать нельзя.", false);
+            return attackMissNotice(owner, "Укажи взглядом на допустимую цель в пределах " + CompanionCombatRules.combatRadius()
+                + " блоков. Игроков и приручённых питомцев атаковать нельзя.");
         }
         cancelTrick(companion); invalidate(aiSessions.computeIfAbsent(companion.id, key -> new AISession()));
         ActionResult result = command.equals("attack") ? wolfWork.attack(companion, wolf, owner, target) : wolfWork.collect(companion, wolf, owner);
@@ -677,6 +726,7 @@ public final class MarkAIMod implements ModInitializer {
     private void configure(Companion c, Wolf wolf) {
         if (c.id == null) c.id = c.entity;
         c.memory.bind(c.id);
+        wolf.getAttribute(Attributes.FOLLOW_RANGE).setBaseValue(CompanionCombatRules.combatRadius());
         if (configured.add(wolf.getUUID())) {
             ((CompanionInventoryHolder) wolf).markai$setCompanion(true);
             if (!wolf.isTame()) wolf.setTame(true, true);
@@ -1158,6 +1208,9 @@ public final class MarkAIMod implements ModInitializer {
         groupStatus.put(owner, reason);
     }
     private int startGroupChat(ServerPlayer owner, String message) {
+        return startGroupChat(owner, message, false);
+    }
+    private int startGroupChat(ServerPlayer owner, String message, boolean chatOutput) {
         if (!NetworkRules.chat(message) || !storageHealthy || !owner.isAlive() || owner.isSpectator()) return 0;
         UUID ownerId = owner.getUUID(); GroupChatState state = groupState(ownerId);
         if (!state.enabled()) { CompanionNetwork.notice(owner, "status", "Общий чат выключен в общей панели."); return 0; }
@@ -1196,7 +1249,7 @@ public final class MarkAIMod implements ModInitializer {
         }
         GroupDialogueRound round = new GroupDialogueRound(message, addressed.stream().map(c -> c.id).toList(),
             eligible.stream().map(c -> c.id).toList(), state.mutualReplies());
-        GroupRun run = new GroupRun(round);
+        GroupRun run = new GroupRun(round, chatOutput);
         groupStates.put(ownerId, state.append(new GroupChatState.Message(round.id(), ownerId, "user", owner.getGameProfile().name(), message)));
         groupRuns.put(ownerId, run); groupStatus.put(ownerId, "Компаньоны отвечают по очереди…");
         groupNextRequest.put(ownerId, System.currentTimeMillis() + (aiConfig == null ? 5 : aiConfig.requestCooldownSeconds) * 1000L);
@@ -1285,6 +1338,7 @@ public final class MarkAIMod implements ModInitializer {
                 Companion addressee=currentTurn.peerReply()?companions.get(currentTurn.replyTo()):null;
                 text=GroupDialogueRound.directedReply(text,addressee==null?null:new GroupDialogueRound.Member(addressee.id,addressee.living.name),groupMembers(owner),limit);
                 groupStates.put(ownerId, groupState(ownerId).append(new GroupChatState.Message(run.round.id(), speaker.id, "assistant", speaker.living.name, text)));
+                if (run.chatOutput) owner.sendSystemMessage(Component.literal("<" + speaker.living.name + "> " + text));
                 run.round.replied(currentTurn, text, groupMembers(owner));
                 speaker.nextMessage = owner.level().getGameTime() + 200;
                 save(); nextGroupTurn(owner, run); CompanionNetwork.sendSnapshot(owner);
@@ -1360,19 +1414,23 @@ public final class MarkAIMod implements ModInitializer {
         return result;
     }
 
-    private int ask(ServerPlayer owner, String message) { return ask(owner, message, false); }
+    private int ask(ServerPlayer owner, String message) { return ask(owner, companions.selected(owner.getUUID()), message, false, false); }
 
     private int ask(ServerPlayer owner, String message, boolean automatic) {
+        return ask(owner, companions.selected(owner.getUUID()), message, automatic, false);
+    }
+
+    private int ask(ServerPlayer owner, Companion target, String message, boolean automatic, boolean commandChat) {
         if (!storageHealthy) {
             owner.sendSystemMessage(Component.literal("MarkAI: ошибка файла состояния; см. журнал.")); return 0;
         }
         if (message == null || message.isBlank() || message.length() > 512 || message.codePoints().anyMatch(Character::isISOControl)) {
             CompanionNetwork.notice(owner, "error", "Сообщение: от 1 до 512 символов, без управляющих кодов."); return 0;
         }
-        Companion selected = companions.selected(owner.getUUID());
-        List<UUID> named = automatic ? List.of() : GroupDialogueRound.addressed(message, groupMembers(owner));
+        Companion selected = target;
+        List<UUID> named = automatic || commandChat ? List.of() : GroupDialogueRound.addressed(message, groupMembers(owner));
         boolean namesAnotherCompanion = !named.isEmpty() && (selected == null || !named.contains(selected.id));
-        String wolfOrder = automatic || namesAnotherCompanion ? null : WolfOrderIntent.parse(message);
+        String wolfOrder = automatic || namesAnotherCompanion || commandChat ? null : WolfOrderIntent.parse(message);
         if (wolfOrder != null) {
             int performed = performCommand(owner, wolfOrder);
             Companion ordered = companions.selected(owner.getUUID());
@@ -1396,13 +1454,13 @@ public final class MarkAIMod implements ModInitializer {
                 invalidate(session); session.nextRequest = 0;
             }
         }
-        Trick requestedTrick = namesAnotherCompanion ? null : Trick.parse(message);
+        Trick requestedTrick = commandChat || namesAnotherCompanion ? null : Trick.parse(message);
         if (requestedTrick != null && (requestedTrick != Trick.COME || c.training.knows(Trick.COME))) return performTrick(owner, requestedTrick);
         String lowerMessage = message.toLowerCase(Locale.ROOT);
         for (String prefix : List.of("учи ", "учим ", "научись ", "тренируй ")) {
-            if (!namesAnotherCompanion && lowerMessage.startsWith(prefix)) return train(owner, message.substring(prefix.length()));
+            if (!commandChat && !namesAnotherCompanion && lowerMessage.startsWith(prefix)) return train(owner, message.substring(prefix.length()));
         }
-        CompanionAction parsed = automatic || namesAnotherCompanion ? null : IntentParser.parse(message);
+        CompanionAction parsed = automatic || namesAnotherCompanion || commandChat ? null : IntentParser.parse(message);
         if (parsed != null) {
             int performed = performAction(c, owner, parsed);
             if (memoryEnabled()) c.memory.rememberExchange(message, new OllamaClient.Reply("say", c.living.lastAction.message()), wolf.level().getGameTime());
@@ -1483,7 +1541,8 @@ public final class MarkAIMod implements ModInitializer {
                         return;
                     }
                     // Conversation cannot change movement just because the model selected an action.
-                    var delivered = new OllamaClient.Reply(automatic || namesAnotherCompanion ? "say" : IntentParser.allowsStructuredAction(message) ? reply.action() : DialogueIntent.requestedAction(message), reply.say());
+                    var delivered = new OllamaClient.Reply(automatic || namesAnotherCompanion || commandChat ? "say"
+                        : IntentParser.allowsStructuredAction(message) ? reply.action() : DialogueIntent.requestedAction(message), reply.say());
                     if (aiConfig != null && delivered.say().length() > aiConfig.maxDialogueLength)
                         delivered = new OllamaClient.Reply(delivered.action(), delivered.say().substring(0, aiConfig.maxDialogueLength));
                     if (automatic && !ambient(c).accept(delivered.say())) {
@@ -1493,6 +1552,7 @@ public final class MarkAIMod implements ModInitializer {
                     journal.finish(requestId, "applied", reply, delivered, null);
                     if (!automatic && retainMemory && memoryEnabled()) c.memory.rememberExchange(message, delivered, current.level().getGameTime());
                     save();
+                    if (commandChat) currentOwner.sendSystemMessage(Component.literal("<" + c.living.name + "> " + delivered.say()));
                     if (companions.selected(c.owner) == c) CompanionNetwork.notice(currentOwner, "reply", delivered.say());
                     CompanionNetwork.sendSnapshot(currentOwner);
                 });

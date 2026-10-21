@@ -19,10 +19,19 @@ import java.util.function.BiPredicate;
 
 /** Shared target and damage gate. No conversation or model output can bypass these checks. */
 public final class CompanionCombatRules {
+    private static volatile int combatRadius = 32;
     private static volatile BiPredicate<Wolf, LivingEntity> permission = (wolf, target) -> false;
     private static volatile BiPredicate<Wolf, LivingEntity> explicitPermission = (wolf, target) -> false;
 
     private CompanionCombatRules() {}
+
+    public static void setCombatRadius(int blocks) {
+        if (blocks < 8 || blocks > 64) throw new IllegalArgumentException("Combat radius must be between 8 and 64 blocks");
+        combatRadius = blocks;
+    }
+
+    public static int combatRadius() { return combatRadius; }
+    private static double combatRadiusSquared() { return (double) combatRadius * combatRadius; }
 
     /** The server installs a lookup of the tracked UUID and current defensive setting. */
     public static void register(BiPredicate<Wolf, LivingEntity> rule) {
@@ -42,7 +51,7 @@ public final class CompanionCombatRules {
         if (!isCompanion(attacker) || target == null) return true;
         Wolf wolf = (Wolf) attacker;
         if (!(wolf.level() instanceof ServerLevel level)) return true;
-        if (!protectedTargetAllowed(wolf, target) || target.level() != level || wolf.distanceToSqr(target) > 256
+        if (!protectedTargetAllowed(wolf, target) || target.level() != level || wolf.distanceToSqr(target) > combatRadiusSquared()
                 || !level.hasChunkAt(target.blockPosition())) return false;
         try {
             if ((target instanceof Enemy || target instanceof Animal) && explicitPermission.test(wolf, target)) return true;
@@ -65,7 +74,7 @@ public final class CompanionCombatRules {
             && wolf.getOwnerReference() != null && wolf.getOwnerReference().getUUID().equals(owner.getUUID())
             && wolf.level() instanceof ServerLevel level && owner.level() == level && target.level() == level
             && (target instanceof Enemy || target instanceof Animal) && protectedTargetAllowed(wolf, target)
-            && wolf.distanceToSqr(target) <= 256 && owner.distanceToSqr(target) <= 256
+            && wolf.distanceToSqr(target) <= combatRadiusSquared() && owner.distanceToSqr(target) <= combatRadiusSquared()
             && owner.distanceToSqr(wolf) <= 256 && level.hasChunkAt(target.blockPosition())
             && owner.hasLineOfSight(target) && wolf.hasLineOfSight(target);
     }

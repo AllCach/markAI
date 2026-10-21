@@ -141,7 +141,8 @@ final class WolfWorkRuntime {
         return companion.workActive && job != null && job.kind == Kind.ATTACK && target != null && target.isAlive()
             && !target.isRemoved() && target.level() == job.level && wolf.level() == job.level
             && job.level.getGameTime() < job.deadline && target.getUUID().equals(job.target)
-            && wolf.distanceToSqr(target) <= 256 && wolf.position().distanceToSqr(job.origin) <= 1024
+            && wolf.distanceToSqr(target) <= (double) CompanionCombatRules.combatRadius() * CompanionCombatRules.combatRadius()
+            && wolf.position().distanceToSqr(job.origin) <= (double) CompanionCombatRules.combatRadius() * CompanionCombatRules.combatRadius()
             && job.level.hasChunkAt(target.blockPosition()) && !unsafe(wolf, true);
     }
 

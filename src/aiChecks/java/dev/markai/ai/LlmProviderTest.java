@@ -107,13 +107,20 @@ public final class LlmProviderTest {
             Files.writeString(path, "{\"ollamaModel\":\"qwen3:4b\",\"timeoutSeconds\":60,\"requestCooldownSeconds\":5}");
             var legacy = AIConfig.load(path);
             check(legacy.effectiveModel().equals("qwen3:4b") && legacy.provider.equals("ollama"), "Legacy local Ollama config migrates without losing selected model");
+            check(legacy.combatRadius == 32, "Legacy config receives the 32-block combat-radius default");
+            Files.writeString(path, "{\"provider\":\"ollama\",\"combatRadius\":40}");
+            check(AIConfig.load(path).combatRadius == 40, "Combat radius is loaded from config");
+            Files.writeString(path, "{\"provider\":\"ollama\",\"combatRadius\":7}");
+            check(AIConfig.load(path).recoveredFromInvalid, "Out-of-range combat radius is rejected and safely recovered");
             String original = "{broken private config";
             Files.writeString(path, original);
             var recovered = AIConfig.load(path);
             check(recovered.recoveredFromInvalid && recovered.provider.equals("ollama") && !recovered.remoteAIEnabled, "Malformed config recovers to safe local defaults");
             try (var files = Files.list(directory)) {
                 var backups = files.filter(p -> p.getFileName().toString().contains(".invalid-")).toList();
-                check(backups.size() == 1 && Files.readString(backups.get(0)).equals(original), "Malformed original is preserved verbatim in a backup");
+                check(backups.size() == 2 && backups.stream().anyMatch(p -> {
+                    try { return Files.readString(p).equals(original); } catch (Exception ignored) { return false; }
+                }), "Malformed original is preserved verbatim in a backup");
             }
             check(!AIConfig.load(path).recoveredFromInvalid, "Recovered config is valid on the next load");
         } finally {

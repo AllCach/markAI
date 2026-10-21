@@ -33,6 +33,8 @@ public final class AIConfig {
     public boolean memoryEnabled = true;
     public boolean hudVisible = true;
     public double followDistance = 4.0;
+    /** Maximum distance, in blocks, at which a companion may acquire a combat target. */
+    public int combatRadius = 32;
     public boolean defensiveBehavior = true;
     public boolean debugMode = false;
     public boolean voiceEnabled = false;
@@ -78,7 +80,8 @@ public final class AIConfig {
                 || maxOutputTokens < 64 || maxOutputTokens > 4096 || retries < 0 || retries > 3
                 || maxDialogueLength < 32 || maxDialogueLength > 240
                 || automaticConversationSeconds < 0 || automaticConversationSeconds > 3600
-                || !Double.isFinite(followDistance) || followDistance < 2 || followDistance > 16)
+                || !Double.isFinite(followDistance) || followDistance < 2 || followDistance > 16
+                || combatRadius < 8 || combatRadius > 64)
             throw new IllegalArgumentException("Invalid MarkAI configuration limits");
         if (authentication == null || !(authentication.equals("none") || authentication.equals("bearer")))
             throw new IllegalArgumentException("Authentication must be none or bearer");
