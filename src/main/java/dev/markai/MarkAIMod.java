@@ -1301,6 +1301,7 @@ public final class MarkAIMod implements ModInitializer {
 
     private int summon(Companion c, ServerPlayer owner) {
         if (!owner.isAlive() || owner.isSpectator() || c.dead) return 0;
+        if (CompanionSpecies.CHICKEN.id().equals(c.species)) return summonChicken(c, owner);
         for (ServerLevel level : server.getAllLevels()) if (level.dimension().identifier().toString().equals(c.dimension))
             level.getChunk(c.chunkX, c.chunkZ);
         Wolf wolf = find(c);
@@ -1332,6 +1333,37 @@ public final class MarkAIMod implements ModInitializer {
             owner.sendSystemMessage(Component.literal(c.living.name + " пришёл к вам.")); return 1;
         }
         owner.sendSystemMessage(Component.literal("Рядом нет безопасного места для призыва.")); return 0;
+    }
+
+    private int summonChicken(Companion c, ServerPlayer owner) {
+        Chicken chicken = findChicken(c);
+        if (chicken == null) {
+            owner.sendSystemMessage(Component.literal("Сохранённая курица не найдена. Повторный экземпляр не создаётся."));
+            return 0;
+        }
+        ServerLevel destination = (ServerLevel) owner.level();
+        for (int dy : new int[]{0, 1, -1}) {
+            for (int[] offset : new int[][]{{2,0},{-2,0},{0,2},{0,-2},{2,2},{-2,-2}}) {
+                Vec3 pos = owner.position().add(offset[0], dy, offset[1]);
+                if (!LivingCompanionRuntime.safePathTarget(destination, pos)
+                        || !destination.noCollision(chicken, chicken.getBoundingBox().move(pos.subtract(chicken.position())))) continue;
+                chickenRuntime.stop(chicken);
+                Entity arrived = chicken.teleport(new TeleportTransition(destination, pos, Vec3.ZERO,
+                    chicken.getYRot(), chicken.getXRot(), Set.of(), TeleportTransition.DO_NOTHING));
+                if (!(arrived instanceof Chicken current) || !current.isAlive()) continue;
+                c.dismissed = false;
+                c.following = true;
+                c.action = "FOLLOW";
+                remember(c, current, destination);
+                chickenRuntime.configure(current, c.living.name);
+                chickenRuntime.follow(current, owner);
+                save();
+                owner.sendSystemMessage(Component.literal(c.living.name + " пришла к вам."));
+                return 1;
+            }
+        }
+        owner.sendSystemMessage(Component.literal("Рядом нет безопасного места для призыва курицы."));
+        return 0;
     }
 
     private void updateSetting(ServerPlayer owner, String key, String value) {
