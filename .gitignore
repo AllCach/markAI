@@ -1,7 +1,35 @@
+# Gradle
 .gradle/
 build/
+out/
+*.class
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Runtime
 run/
+logs/
+*.log
+*.log.gz
+
+# Generated releases
+dist/
+
+# Local tools and templates
 .tools/
 .starter/
-.idea/
-*.iml
+
+# Credentials
+.env
+.env.*
+*.pem
+*.key
+id_ed25519
+id_rsa
+
+# OS
+.DS_Store
+Thumbs.db
