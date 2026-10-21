@@ -7,10 +7,13 @@ import dev.markai.network.CompanionNetwork;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.protocol.game.ServerboundPlayerLoadedPacket;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.animal.cow.Cow;
 import net.minecraft.world.entity.animal.wolf.Wolf;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.storage.LevelResource;
@@ -92,6 +95,58 @@ public final class MultiCompanionGameTest {
             && registry.selected(owner.getUUID()) == second,
             "A second player cannot select someone else's companion");
 
+        helper.succeed();
+    }
+
+    @GameTest(structure = "markai-test:arena", maxTicks = 200)
+    public void ctrlGroupOrdersAffectOwnWolvesWithoutChangingSelection(GameTestHelper helper) throws Exception {
+        for (int x = 0; x < 32; x++) for (int z = 0; z < 32; z++)
+            helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+        ServerPlayer owner = player(helper, 2, 2, 2);
+        MarkAIMod mod = FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream()
+            .filter(MarkAIMod.class::isInstance).map(MarkAIMod.class::cast).findFirst().orElseThrow();
+        var registry = TestCompanions.registry(mod);
+        CompanionNetwork.Backend backend = backend();
+
+        command(owner, "mark spawn");
+        MarkAIMod.Companion first = registry.selected(owner.getUUID());
+        helper.assertTrue(first != null, "First wolf registered for group orders");
+        command(owner, "mark spawn");
+        MarkAIMod.Companion second = registry.selected(owner.getUUID());
+        helper.assertTrue(second != null && second != first, "Second wolf registered for group orders");
+
+        ServerPlayer stranger = player(helper, 20, 2, 20);
+        command(stranger, "mark spawn");
+        MarkAIMod.Companion foreign = registry.selected(stranger.getUUID());
+        helper.assertTrue(foreign != null && foreign.following, "Other owner has a separate active wolf");
+
+        backend.command(owner, "all:stay");
+        helper.assertTrue(!first.following && !second.following && foreign.following,
+            "Ctrl+stay affects all owned wolves but does not touch another owner's wolf");
+        helper.assertTrue(registry.selected(owner.getUUID()) == second,
+            "Group orders never change active selection");
+
+        backend.command(owner, "all:follow");
+        helper.assertTrue(first.following && second.following && foreign.following,
+            "Ctrl+follow restores both owned wolves independently");
+
+        Cow target = helper.spawn(EntityTypes.COW, new BlockPos(2, 2, 10));
+        target.setNoAi(true);
+        owner.lookAt(EntityAnchorArgument.Anchor.EYES, target, EntityAnchorArgument.Anchor.EYES);
+        backend.command(owner, "all:attack");
+        Wolf firstWolf = (Wolf) helper.getLevel().getEntity(first.entity);
+        Wolf secondWolf = (Wolf) helper.getLevel().getEntity(second.entity);
+        helper.assertTrue(firstWolf != null && secondWolf != null
+                && first.workActive && second.workActive
+                && firstWolf.getTarget() == target && secondWolf.getTarget() == target,
+            "Ctrl+attack assigns one captured visible target to every owned wolf");
+        helper.assertTrue(!foreign.workActive && registry.selected(owner.getUUID()) == second,
+            "Attack never affects a foreign companion or active selection");
+
+        backend.command(owner, "all:stop");
+        helper.assertTrue(!first.workActive && !second.workActive
+                && firstWolf.getTarget() == null && secondWolf.getTarget() == null,
+            "Ctrl+stop cancels both native combat jobs");
         helper.succeed();
     }
 
