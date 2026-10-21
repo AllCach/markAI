@@ -409,7 +409,8 @@ public final class MarkAIMod implements ModInitializer {
             return adoptWolf(owner, wolf);
         }
         if (command.equals("spawn_chicken")
-                || command.equals("respawn") && c != null && c.dead && CompanionSpecies.CHICKEN.id().equals(c.species)) {
+                || (command.equals("spawn") || command.equals("respawn"))
+                    && c != null && c.dead && CompanionSpecies.CHICKEN.id().equals(c.species)) {
             return spawnChicken(owner, c);
         }
         if (command.equals("spawn") || command.equals("respawn")) {
