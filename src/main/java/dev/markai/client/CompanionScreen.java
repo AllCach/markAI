@@ -36,7 +36,7 @@ public final class CompanionScreen extends Screen {
     private boolean traitPage;
     private EditBox input, rename;
     private Button sendButton, deleteButton, renameButton;
-    private Button previousCompanion, nextCompanion;
+    private Button previousCompanion, nextCompanion, previousCard, nextCard;
     private final List<Button> memoryButtons = new ArrayList<>();
     private final List<Button> settingButtons = new ArrayList<>();
     private final List<Button> traitButtons = new ArrayList<>();
@@ -58,6 +58,7 @@ public final class CompanionScreen extends Screen {
         left = (width - panelWidth) / 2; top = (height - panelHeight) / 2;
         contentTop = top + (quick ? 42 : 66); contentBottom = top + panelHeight - 34;
         input = null; rename = null; sendButton = null; deleteButton = null; renameButton = null;
+        previousCard = null; nextCard = null;
         memoryButtons.clear(); settingButtons.clear(); traitButtons.clear();
         addButton("×", left + panelWidth - 29, top + 8, 20, () -> minecraft.gui.setScreen(null));
         previousCompanion = addButton("‹", left + panelWidth - 79, top + 8, 20, () -> selectCompanion(-1));
@@ -116,6 +117,27 @@ public final class CompanionScreen extends Screen {
         String id = ClientCompanionState.string(companions.get(target).getAsJsonObject(), "id", "");
         if (MarkAIClient.select(id)) { requestedCompanion = id; selectionRequestedAt = System.nanoTime(); updateLabels(); }
     }
+    /** On narrow windows retain the original compact profile instead of clipping the controls. */
+    private boolean showCarousel() { return panelWidth >= 350 && profilePreviewBottom() - contentTop >= 165; }
+    private int profilePreviewBottom() {
+        int rows = (4 + profileActionColumns() - 1) / profileActionColumns();
+        return contentBottom - rows * 23 - 5;
+    }
+    private int carouselHeight() {
+        int available = profilePreviewBottom() - contentTop;
+        return Math.min(178, Math.max(92, Math.min(available - 70, available * 3 / 5)));
+    }
+    private int sideCardWidth() { return Math.max(72, Math.min(130, (panelWidth - 34) / 4)); }
+
+    private JsonObject neighbor(int direction) {
+        var roster = state().companions();
+        if (roster.size() < 2) return null;
+        int index = companionIndex();
+        if (index < 0) return null;
+        var entry = roster.get(Math.floorMod(index + direction, roster.size()));
+        return entry.isJsonObject() ? entry.getAsJsonObject() : null;
+    }
+
     private Button addButton(String text, int x, int y, int w, Runnable action) {
         return addRenderableWidget(Button.builder(Component.literal(text), button -> action.run()).bounds(x, y, w, 20).build());
     }
@@ -124,6 +146,13 @@ public final class CompanionScreen extends Screen {
         if (quick || action.equals("inventory")) minecraft.gui.setScreen(null);
     }
     private void initProfile() {
+        if (showCarousel()) {
+            int y = contentTop + 2, side = sideCardWidth(), h = carouselHeight();
+            previousCard = addButton("‹", left + 15, y + h - 22, side - 10, () -> selectCompanion(-1));
+            nextCard = addButton("›", left + panelWidth - 5 - side, y + h - 22, side - 10, () -> selectCompanion(1));
+            previousCard.setTooltip(Tooltip.create(tr("markai.ui.previous_companion")));
+            nextCard.setTooltip(Tooltip.create(tr("markai.ui.next_companion")));
+        }
         String[] actions = {"spawn", "tame", "summon", "dismiss"};
         int columns = profileActionColumns();
         int rows = (actions.length + columns - 1) / columns;
@@ -215,6 +244,8 @@ public final class CompanionScreen extends Screen {
         boolean canSelect = MarkAIClient.available() && state().companions().size() > 1 && requestedCompanion.isBlank();
         if (previousCompanion != null) previousCompanion.active = canSelect;
         if (nextCompanion != null) nextCompanion.active = canSelect;
+        if (previousCard != null) previousCard.active = canSelect;
+        if (nextCard != null) nextCard.active = canSelect;
         if (sendButton != null) sendButton.active = MarkAIClient.available() && state().bool("can_chat", true) && NetworkRules.chat(input.getValue());
         if (renameButton != null) renameButton.active = MarkAIClient.available() && NetworkRules.setting("name", rename.getValue());
         if (deleteButton != null) deleteButton.active = NetworkRules.memoryId(selectedMemory);
@@ -252,6 +283,17 @@ public final class CompanionScreen extends Screen {
         return super.keyPressed(event);
     }
     @Override public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
+        if (vertical != 0 && state().companions().size() > 1) {
+            // The selector is the only region that uses scroll to change companions.
+            // Do not steal scroll input from chat, memories or other Minecraft controls.
+            boolean header = x >= left + 108 && x < left + panelWidth - 84 && y >= top + 7 && y < top + 32;
+            boolean preview = tab == Tab.PROFILE && showCarousel() && x >= left + 10
+                && x < left + panelWidth - 10 && y >= contentTop && y < contentTop + 2 + carouselHeight();
+            if (header || preview) {
+                selectCompanion(vertical > 0 ? -1 : 1);
+                return true;
+            }
+        }
         if (y >= contentTop && y <= contentBottom) {
             int delta = (int) Math.signum(vertical) * 3;
             switch (tab) {
@@ -295,14 +337,66 @@ public final class CompanionScreen extends Screen {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
     private void drawProfile(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        int bottom = profilePreviewBottom();
+        if (showCarousel()) {
+            drawCarousel(graphics, mouseX, mouseY);
+            int y = contentTop + carouselHeight() + 10;
+            drawProfileDetails(graphics, left + 15, y, panelWidth - 30, Math.max(12, bottom - y - 3));
+            return;
+        }
         int previewWidth = panelWidth < 400 ? 80 : 130;
-        int bottom = contentBottom - (4 / profileActionColumns()) * 23 - 5;
         graphics.fill(left + 10, contentTop, left + 10 + previewWidth, bottom, 0x8834493D);
         var wolf = MarkAIClient.preview();
         if (wolf != null) InventoryScreen.extractEntityInInventoryFollowsMouse(graphics, left + 12, contentTop,
             left + previewWidth + 8, bottom, Math.max(20, Math.min(44, (bottom - contentTop) / 2)), 0.0F, mouseX, mouseY, wolf);
         else graphics.text(font, tr("markai.ui.not_loaded"), left + 13, contentTop + 15, MUTED);
         int x = left + previewWidth + 20;
+        drawProfileDetails(graphics, x, contentTop + 3, panelWidth - previewWidth - 32, bottom - contentTop - 6);
+    }
+
+    /** Larger live 3D model in the middle; compact actionable neighbors on both sides. */
+    private void drawCarousel(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        int side = sideCardWidth(), gap = 6, y = contentTop + 2, h = carouselHeight();
+        int prevX = left + 10, centerX = prevX + side + gap;
+        int centerWidth = panelWidth - 20 - side * 2 - gap * 2;
+        int nextX = centerX + centerWidth + gap;
+        drawPreviewCard(graphics, neighbor(-1), prevX, y, side, h, false, mouseX, mouseY);
+        var selected = new JsonObject();
+        selected.addProperty("name", state().string("name", "Mark"));
+        selected.addProperty("entity_uuid", state().string("entity_uuid", ""));
+        selected.addProperty("health", state().number("health", 0));
+        selected.addProperty("max_health", state().number("max_health", 40));
+        selected.addProperty("activity", state().string("activity", "IDLE"));
+        drawPreviewCard(graphics, selected, centerX, y, centerWidth, h, true, mouseX, mouseY);
+        drawPreviewCard(graphics, neighbor(1), nextX, y, side, h, false, mouseX, mouseY);
+    }
+
+    private void drawPreviewCard(GuiGraphicsExtractor graphics, JsonObject companion, int x, int y,
+                                 int w, int h, boolean selected, int mouseX, int mouseY) {
+        graphics.fill(x, y, x + w, y + h, selected ? 0xCC335447 : 0xAA263B35);
+        graphics.outline(x, y, w, h, selected ? ACCENT : 0xFF49685A);
+        if (companion == null) return;
+        String name = ClientCompanionState.string(companion, "name", "—");
+        String activity = ClientCompanionState.string(companion, "activity", "UNLOADED");
+        graphics.text(font, font.plainSubstrByWidth(name, w - 12), x + 6, y + 7, selected ? ACCENT : WHITE);
+        var wolf = MarkAIClient.preview(ClientCompanionState.string(companion, "entity_uuid", ""));
+        if (wolf != null) {
+            int size = selected ? Math.max(24, Math.min(54, (h - 52) / 2))
+                : Math.max(16, Math.min(27, (h - 52) / 3));
+            InventoryScreen.extractEntityInInventoryFollowsMouse(graphics, x + 3, y + 20,
+                x + w - 3, y + h - 38, size, 0.0F, mouseX, mouseY, wolf);
+        } else {
+            graphics.text(font, font.plainSubstrByWidth(label("markai.ui.not_loaded").getString(), w - 12),
+                x + 6, y + Math.max(24, (h - 48) / 2), MUTED);
+        }
+        String hp = String.format(Locale.ROOT, "%.0f/%.0f",
+            ClientCompanionState.number(companion, "health", 0), ClientCompanionState.number(companion, "max_health", 40));
+        graphics.text(font, font.plainSubstrByWidth(hp, w - 12), x + 6, y + h - 36, WHITE);
+        graphics.text(font, font.plainSubstrByWidth(localizedState("activity", activity), w - 12),
+            x + 6, y + h - 26, MUTED);
+    }
+
+    private void drawProfileDetails(GuiGraphicsExtractor graphics, int x, int y, int w, int h) {
         List<String> details = new ArrayList<>();
         details.add(label("markai.ui.health") + ": " + String.format(Locale.ROOT, "%.1f / %.1f", state().number("health", 0), state().number("max_health", 40)));
         details.add(label("markai.ui.activity") + ": " + localizedState("activity", state().string("activity", "IDLE")));
@@ -315,7 +409,7 @@ public final class CompanionScreen extends Screen {
         for (String key : List.of("fear", "curiosity", "energy", "alertness")) {
             if (state().emotions().has(key)) details.add(label("markai.emotion." + key) + ": " + String.format(Locale.ROOT, "%.0f", ClientCompanionState.number(state().emotions(), key, 0)));
         }
-        drawWrapped(graphics, details, x, contentTop + 3, panelWidth - previewWidth - 32, bottom - contentTop - 6, profileScroll, WHITE);
+        drawWrapped(graphics, details, x, y, w, h, profileScroll, WHITE);
     }
     private record ChatLine(FormattedCharSequence text, int color) {}
     private void drawDialogue(GuiGraphicsExtractor graphics) {
