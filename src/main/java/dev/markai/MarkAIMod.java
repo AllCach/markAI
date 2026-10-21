@@ -916,6 +916,28 @@ public final class MarkAIMod implements ModInitializer {
             chickenRuntime.stop(chicken);
             c.action = "IDLE";
         }
+        long now = level.getGameTime();
+        if (companions.selected(c.owner) == c && c.living.settings.autochat && aiConfig != null
+                && aiConfig.automaticConversationSeconds > 0 && now >= c.nextAutomaticConversation
+                && chicken.distanceTo(owner) <= 12) {
+            c.nextAutomaticConversation = now + 20;
+            AISession session = aiSessions.get(c.id);
+            if (ollama != null && (session == null || session.enabled && session.pending == null)
+                    && groupRuns.isEmpty() && aiSessions.values().stream().noneMatch(existing -> existing.pending != null)
+                    && (session == null || System.currentTimeMillis() >= session.nextRequest)
+                    && ambient(c).begin(now, aiConfig.automaticConversationSeconds, chickenAmbientScene(c, chicken, owner))) {
+                ask(owner, c, AMBIENT_PROMPT, true, false);
+            }
+        }
+    }
+
+    private String chickenAmbientScene(Companion c, Chicken chicken, ServerPlayer owner) {
+        WorldEvent event = freshAmbientEvent(c, chicken.level().getGameTime());
+        return CHAT_JSON.toJson(List.of(chicken.level().dimension().identifier().toString(),
+            chicken.level().getBiome(chicken.blockPosition()).toString(), chicken.level().isRaining(),
+            chicken.level().isThundering(), chicken.level().getDayTime() / 6000,
+            c.living.emotions.mood.name(), event == null ? "none" : event.type().name() + ":" + event.gameTime(),
+            (int) chicken.distanceTo(owner)));
     }
 
     private void tick(Companion c) {
