@@ -8,12 +8,23 @@ public final class NetworkRules {
     private static final Set<String> ACTIONS = Set.of("spawn", "status", "follow", "stay", "come", "rest", "wander",
         "home", "sethome", "investigate", "summon", "dismiss", "inventory", "debug", "brain", "mood", "memory", "memory_prev", "memory_next", "cancel",
         "tame", "attack", "collect", "stop");
+    // Ctrl modifies only commands that make sense for multiple living companions.
+    private static final Set<String> GROUP_ACTIONS = Set.of(
+        "attack", "collect", "stop", "come", "stay", "follow",
+        "rest", "wander", "home", "investigate");
+
     private static final Set<String> TRAITS = Set.of("trait_loyalty", "trait_curiosity", "trait_caution", "trait_playfulness",
         "trait_sociability", "trait_independence", "trait_confidence", "trait_trust");
 
     private NetworkRules() {}
 
-    public static boolean action(String action) { return action != null && ACTIONS.contains(action); }
+    public static boolean groupAction(String action) {
+        return action != null && GROUP_ACTIONS.contains(action);
+    }
+    public static boolean action(String action) {
+        return action != null && (ACTIONS.contains(action)
+            || action.startsWith("all:") && groupAction(action.substring(4)));
+    }
     public static boolean chat(String message) {
         return message != null && !message.isBlank() && message.length() <= 512 && message.codePoints().noneMatch(Character::isISOControl);
     }
