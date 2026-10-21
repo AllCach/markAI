@@ -2,12 +2,12 @@
 
 ## Beta 0.10.1
 
-Подготовка beta-версии завершена в ветке GitHub `dev-beta`. В текущей игровой папке установлена предыдущая проверенная 0.10.0; beta-версия туда не заменялась. Собранный ограниченный архив `dist/MarkAI-0.10.1-beta.zip` проверен задачей `verifyBetaDist`. Его состав и checksum проверяет Gradle. Beta-пакет следует сначала установить на копию мира по приложенной README, затем проверить сценарии из [BETA_TESTING.md](BETA_TESTING.md).
+21 октября 2026, после закрытия Minecraft, beta-версия установлена в основной профиль `C:\Users\kolya\AppData\Roaming\.minecraft`. Активен `mods/markai-0.10.1.jar`; SHA-256: `A743FA942477946E62C3558512106E6188CF94E0B46BABB7FF2FCBB28ECF4341`. Предыдущий JAR сохранён: `mods/markai-0.10.0.jar.disabled-5017bd537254491285fcf5aff55ddc9f` (SHA-256: `95D76B709F29ADBBDCD0A9C50D7959B79D0CAD26A5217E5722A183C2627814C8`). Проверены один активный JAR MarkAI, установленный Fabric API и контрольные суммы. Миры/настройки не менялись; Minecraft после установки ещё не запускался. Архив `dist/MarkAI-0.10.1-beta.zip` прошёл `verifyBetaDist`; тесты и ручные проверки — [BETA_TESTING.md](BETA_TESTING.md).
 
 ## 0.10.0 — общая панель и общий чат
 
 <!-- install-0.10.0-status -->
-0.10.0 установлена вместо 0.9.1 после закрытия Minecraft. Активен только markai-0.10.0.jar; SHA-256 сверён с проверенной сборкой: 95D76B709F29ADBBDCD0A9C50D7959B79D0CAD26A5217E5722A183C2627814C8. Прежний JAR сохранён: C:\Users\kolya\AppData\Roaming\.minecraft\mods\markai-0.9.1.jar.disabled-90710a7dbc17463a858cb354d1408c2d. Миры и настройки установщиком не изменялись. Можно запускать Minecraft.
+0.10.0 установлена вместо 0.9.1 после закрытия Minecraft. На момент записи активным был только markai-0.10.0.jar; позже он заменён beta-версией 0.10.1. SHA-256 сверён с проверенной сборкой: 95D76B709F29ADBBDCD0A9C50D7959B79D0CAD26A5217E5722A183C2627814C8. Прежний JAR сохранён: C:\Users\kolya\AppData\Roaming\.minecraft\mods\markai-0.9.1.jar.disabled-90710a7dbc17463a858cb354d1408c2d. Миры и настройки установщиком не изменялись. После этой установки Minecraft можно было запускать.
 <!-- /install-0.10.0-status -->
 
 Перед заменой проверены резервные копии 7 файлов настроек и состояния MarkAI: `C:\Users\kolya\AppData\Roaming\.minecraft\markai-backups\install-0.10.0-afbbeb781d4640f296cae9303876e681`. Проверена контрольная сумма каждого скопированного файла. Результат операции: `build/group-hub-0.10.0-install.json`.
@@ -16,7 +16,7 @@
 ## История установки 0.9.1 — вопрос виден во время ожидания ответа
 
 <!-- install-0.9.1-status -->
-0.9.1 установлена вместо 0.9.0 после закрытия Minecraft. Активен только markai-0.9.1.jar; SHA-256 сверён с проверенной сборкой: FC4479FE950BABCBB4105B050BC83AAC57F967454B3A6A50517E6251427AAE94. Прежний JAR сохранён: C:\Users\kolya\AppData\Roaming\.minecraft\mods\markai-0.9.0.jar.disabled-2d7d4eef46d345ffac719e918845f56f. Миры и настройки установщиком не изменялись. Можно запускать Minecraft.
+0.9.1 установлена вместо 0.9.0 после закрытия Minecraft. Активен только markai-0.9.1.jar; SHA-256 сверён с проверенной сборкой: FC4479FE950BABCBB4105B050BC83AAC57F967454B3A6A50517E6251427AAE94. Прежний JAR сохранён: C:\Users\kolya\AppData\Roaming\.minecraft\mods\markai-0.9.0.jar.disabled-2d7d4eef46d345ffac719e918845f56f. Миры и настройки установщиком не изменялись. После этой установки Minecraft можно было запускать.
 <!-- /install-0.9.1-status -->
 
 ## Установка 0.9.0 — 21 октября 2026
