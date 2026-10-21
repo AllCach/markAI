@@ -44,7 +44,7 @@ public final class TrainingGameTest {
         command(owner, "walk stay");
         String saved = Files.readString(helper.getLevel().getServer().getWorldPath(LevelResource.ROOT).resolve("markai.json"));
         boolean restored = false;
-        for (MarkAIMod.Companion decoded : new Gson().fromJson(saved, MarkAIMod.Companion[].class)) {
+        for (MarkAIMod.Companion decoded : new Gson().fromJson(JsonParser.parseString(saved).getAsJsonObject().getAsJsonArray("companions"), MarkAIMod.Companion[].class)) {
             if (decoded.owner.equals(owner.getUUID())) {
                 restored = decoded.training.knows(Trick.COME) && decoded.training.level() == 2
                     && new Gson().toJson(decoded.memory.context("дом")).contains("синей крышей") && decoded.memory.history().size() == 2;
