@@ -548,7 +548,7 @@ public final class MarkAIMod implements ModInitializer {
         } else if (command.equals("status")) {
             Wolf wolf = find(c);
             owner.sendSystemMessage(Component.literal(c.living.name + " | owner=" + c.owner + " | entity=" + c.entity
-                + " | minecraft:wolf | HP=" + (wolf == null ? "?" : wolf.getHealth())
+                + " | " + c.species + " | HP=" + (wolf == null ? "?" : wolf.getHealth())
                 + "/" + (wolf == null ? "?" : wolf.getMaxHealth()) + " | " + (c.dead ? "DEAD" : wolf == null ? "UNLOADED" : c.action)
                 + " | mode=" + (c.following ? "FOLLOW" : "STAY") + " | dimension=" + c.dimension));
             owner.sendSystemMessage(Component.literal(c.training.status()));
@@ -1238,6 +1238,7 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private int performAction(Companion c, ServerPlayer owner, CompanionAction action) {
+        if (CompanionSpecies.CHICKEN.id().equals(c.species)) return performChickenAction(c, owner, action);
         Wolf wolf = find(c);
         if (wolf == null) { owner.sendSystemMessage(Component.literal("Компаньон не загружен. /mark summon")); return 0; }
         wolfWork.cancel(c, wolf);
@@ -1246,6 +1247,39 @@ public final class MarkAIMod implements ModInitializer {
         owner.sendSystemMessage(Component.literal(c.living.name + ": " + result.message()));
         CompanionNetwork.notice(owner, result.status() == ActionResult.Status.FAILED ? "error" : "status", result.message());
         save(); return result.status() == ActionResult.Status.FAILED ? 0 : 1;
+    }
+
+    private int performChickenAction(Companion c, ServerPlayer owner, CompanionAction action) {
+        Chicken chicken = findChicken(c);
+        if (chicken == null || !owner.isAlive() || owner.isSpectator() || owner.level() != chicken.level()) {
+            owner.sendSystemMessage(Component.literal("Курица-компаньон должна быть загружена в вашем измерении."));
+            return 0;
+        }
+        switch (action) {
+            case FOLLOW, COME -> {
+                c.following = true;
+                c.dismissed = false;
+                chickenRuntime.follow(chicken, owner);
+                c.action = "FOLLOW";
+            }
+            case STAY, REST -> {
+                c.following = false;
+                c.dismissed = false;
+                chickenRuntime.stop(chicken);
+                c.action = "STAY";
+            }
+            case CANCEL, IDLE -> {
+                chickenRuntime.stop(chicken);
+                c.action = c.following ? "FOLLOW" : "STAY";
+            }
+            default -> {
+                owner.sendSystemMessage(Component.literal("Эта команда пока доступна только волку."));
+                return 0;
+            }
+        }
+        save();
+        owner.sendSystemMessage(Component.literal(c.living.name + (c.following ? " следует за вами." : " остаётся на месте.")));
+        return 1;
     }
 
     private void cancelCompanionAction(Companion c, ServerPlayer owner) {
