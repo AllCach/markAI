@@ -212,8 +212,9 @@ public final class LivingCompanionGameTest {
         owner.level().getServer().getCommands().performPrefixedCommand(owner.createCommandSourceStack(), command);
     }
     private static MarkAIMod.Companion companion(ServerPlayer owner) throws Exception {
-        var mod = FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream()
-            .filter(m -> m instanceof MarkAIMod).findFirst().orElseThrow();
+        MarkAIMod mod = FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream()
+            .filter(MarkAIMod.class::isInstance).map(MarkAIMod.class::cast)
+            .findFirst().orElseThrow();
         return TestCompanions.selected(mod, owner.getUUID());
     }
     private static CompanionNetwork.Backend backend() throws Exception {
