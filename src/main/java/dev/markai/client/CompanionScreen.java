@@ -384,16 +384,16 @@ public final class CompanionScreen extends Screen {
             int size = selected ? Math.max(24, Math.min(54, (h - 52) / 2))
                 : Math.max(16, Math.min(27, (h - 52) / 3));
             InventoryScreen.extractEntityInInventoryFollowsMouse(graphics, x + 3, y + 20,
-                x + w - 3, y + h - 38, size, 0.0F, mouseX, mouseY, wolf);
+                x + w - 3, y + h - 52, size, 0.0F, mouseX, mouseY, wolf);
         } else {
-            graphics.text(font, font.plainSubstrByWidth(label("markai.ui.not_loaded").getString(), w - 12),
+            graphics.text(font, font.plainSubstrByWidth(label("markai.ui.not_loaded"), w - 12),
                 x + 6, y + Math.max(24, (h - 48) / 2), MUTED);
         }
         String hp = String.format(Locale.ROOT, "%.0f/%.0f",
             ClientCompanionState.number(companion, "health", 0), ClientCompanionState.number(companion, "max_health", 40));
-        graphics.text(font, font.plainSubstrByWidth(hp, w - 12), x + 6, y + h - 36, WHITE);
+        graphics.text(font, font.plainSubstrByWidth(hp, w - 12), x + 6, y + h - 45, WHITE);
         graphics.text(font, font.plainSubstrByWidth(localizedState("activity", activity), w - 12),
-            x + 6, y + h - 26, MUTED);
+            x + 6, y + h - 34, MUTED);
     }
 
     private void drawProfileDetails(GuiGraphicsExtractor graphics, int x, int y, int w, int h) {
