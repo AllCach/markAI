@@ -1588,7 +1588,11 @@ public final class MarkAIMod implements ModInitializer {
         var expectedLevel = owner.level(); MinecraftServer expectedServer = server;
         GroupDialogueRound.Turn currentTurn = turn;
         run.speaker = speaker.living.name;
-        var context = com.google.gson.JsonParser.parseString(snapshot(speaker, wolf, owner, "")).getAsJsonObject();
+        var context = com.google.gson.JsonParser.parseString(
+            CompanionSpecies.CHICKEN.id().equals(speaker.species)
+                ? chickenDialogueSnapshot(speaker, findChicken(speaker), owner)
+                : snapshot(speaker, wolf, owner, "")
+        ).getAsJsonObject();
         context.remove("memory"); context.remove("last_action_result");
         context.getAsJsonObject("living").remove("recent_events");
         context.addProperty("conversation_mode", "group");
@@ -1929,6 +1933,46 @@ public final class MarkAIMod implements ModInitializer {
         }
         if (serialized.length() > 8192) throw new IllegalStateException("Ambient observation exceeded its context budget");
         return new DialogueContext(serialized, List.of());
+    }
+
+    private String chickenDialogueSnapshot(Companion c, Chicken chicken, ServerPlayer owner) {
+        if (chicken == null) throw new IllegalStateException("Chicken companion entity is unavailable");
+        var facts = new LinkedHashMap<String, Object>();
+        facts.put("companion", Map.of("name", c.living.name, "type", CompanionSpecies.CHICKEN.id(),
+            "health", chicken.getHealth(), "max_health", chicken.getMaxHealth(), "tamed", false,
+            "can_attack", false, "owner_uuid", c.owner.toString(), "position", position(chicken),
+            "movement", Map.of("action", c.action == null ? "IDLE" : c.action,
+                "navigation_active", !chicken.getNavigation().isDone(), "following_owner", c.following)));
+        facts.put("player", Map.of("name", owner.getGameProfile().name(), "position", position(owner),
+            "dimension", owner.level().dimension().identifier().toString()));
+        facts.put("environment", Map.of("dimension", chicken.level().dimension().identifier().toString(),
+            "day_time", chicken.level().getDayTime(), "raining", chicken.level().isRaining(),
+            "thundering", chicken.level().isThundering()));
+        facts.put("identity", new CompanionIdentity(c.id, c.owner, c.entity));
+        facts.put("danger_now", false);
+        facts.put("nearby_hostiles", List.of());
+        facts.put("nearby_entities", List.of());
+        facts.put("mode", c.following ? "follow" : "stay");
+        facts.put("dimension", c.dimension);
+        facts.put("memory", memoryEnabled() ? c.memory.context("") : Map.of());
+        facts.put("training", c.training.context());
+        var living = new LinkedHashMap<String, Object>(c.living.context());
+        living.remove("personality");
+        living.remove("emotions");
+        if (!memoryEnabled()) living.remove("recent_events");
+        facts.put("living", living);
+        facts.put("personality", c.living.personality.context());
+        facts.put("emotions", c.living.emotions.context());
+        facts.put("last_action_result", c.living.lastAction);
+        var bounded = CHAT_JSON.toJsonTree(facts).getAsJsonObject();
+        String serialized = CHAT_JSON.toJson(bounded);
+        if (serialized.length() > 8192) {
+            bounded.remove("nearby_entities");
+            bounded.remove("nearby_hostiles");
+            serialized = CHAT_JSON.toJson(bounded);
+        }
+        if (serialized.length() > 8192) throw new IllegalStateException("Chicken observation exceeded its context budget");
+        return serialized;
     }
 
     private String snapshot(Companion c, Wolf wolf, ServerPlayer owner, String question) {
