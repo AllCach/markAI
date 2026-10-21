@@ -58,7 +58,7 @@ public final class LivingCompanionGameTest {
         helper.assertTrue(!otherView.contains(c.entity.toString()) && !otherView.contains("Тихолесье"), "Other player's UI cannot disclose this companion's private state");
         command(owner, "mark stay");
         String saved = Files.readString(helper.getLevel().getServer().getWorldPath(LevelResource.ROOT).resolve("markai.json"));
-        MarkAIMod.Companion restored = java.util.Arrays.stream(new Gson().fromJson(saved, MarkAIMod.Companion[].class))
+        MarkAIMod.Companion restored = java.util.Arrays.stream(new Gson().fromJson(JsonParser.parseString(saved).getAsJsonObject().getAsJsonArray("companions"), MarkAIMod.Companion[].class))
             .filter(entry -> entry.owner.equals(owner.getUUID())).findFirst().orElseThrow();
         restored.living.normalize(); restored.memory.normalize();
         helper.assertTrue(restored.entity.equals(c.entity) && restored.living.personality.caution == .87
