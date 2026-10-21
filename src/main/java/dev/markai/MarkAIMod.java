@@ -1655,16 +1655,17 @@ public final class MarkAIMod implements ModInitializer {
     private String uiSnapshot(ServerPlayer owner) {
         var available = new ArrayList<Map<String, Object>>();
         for (Companion member : companions.owned(owner.getUUID())) {
-            Wolf rosterWolf = find(member);
+            LivingEntity rosterEntity = CompanionSpecies.CHICKEN.id().equals(member.species)
+                ? findChicken(member) : find(member);
             var summary = new LinkedHashMap<String, Object>();
             summary.put("id", member.id.toString());
             summary.put("entity_uuid", member.entity.toString());
             summary.put("name", member.living.name);
             summary.put("species", member.species);
             summary.put("dead", member.dead);
-            summary.put("activity", member.dead ? "DEAD" : rosterWolf == null ? "UNLOADED" : member.action);
-            summary.put("health", rosterWolf == null ? 0 : rosterWolf.getHealth());
-            summary.put("max_health", rosterWolf == null ? 40 : rosterWolf.getMaxHealth());
+            summary.put("activity", member.dead ? "DEAD" : rosterEntity == null ? "UNLOADED" : member.action);
+            summary.put("health", rosterEntity == null ? 0 : rosterEntity.getHealth());
+            summary.put("max_health", rosterEntity == null ? 0 : rosterEntity.getMaxHealth());
             available.add(summary);
         }
         Companion c = companions.selected(owner.getUUID());
@@ -1673,17 +1674,18 @@ public final class MarkAIMod implements ModInitializer {
             "companions", available, "group", groupSnapshot(owner), "group_messages", groupState(owner.getUUID()).messages(),
             "common_settings", commonSettings(owner)));
         c.memory.flushPending(); c.living.normalize();
-        Wolf wolf = find(c); AISession session = aiSessions.get(c.id);
+        LivingEntity entity = CompanionSpecies.CHICKEN.id().equals(c.species) ? findChicken(c) : find(c);
+        AISession session = aiSessions.get(c.id);
         var data = new LinkedHashMap<String, Object>();
         data.put("companions", available);
         data.put("group", groupSnapshot(owner));
         data.put("common_settings", commonSettings(owner));
         var groupHistory = new ArrayList<>(groupState(owner.getUUID()).messages());
         data.put("group_messages", groupHistory);
-        data.put("name", c.living.name); data.put("entity_uuid", c.entity.toString()); data.put("entity_id", wolf == null ? -1 : wolf.getId());
+        data.put("name", c.living.name); data.put("entity_uuid", c.entity.toString()); data.put("entity_id", entity == null ? -1 : entity.getId());
         data.put("companion_id", c.id == null ? c.entity.toString() : c.id.toString());
-        data.put("health", wolf == null ? 0 : wolf.getHealth()); data.put("max_health", wolf == null ? 40 : wolf.getMaxHealth());
-        data.put("activity", c.dead ? "DEAD" : wolf == null ? "UNLOADED" : c.action);
+        data.put("health", entity == null ? 0 : entity.getHealth()); data.put("max_health", entity == null ? 0 : entity.getMaxHealth());
+        data.put("activity", c.dead ? "DEAD" : entity == null ? "UNLOADED" : c.action);
         data.put("mood", c.living.emotions.mood.name()); data.put("trust", c.living.emotions.trust); data.put("level", c.training.level());
         data.put("ai_status", ollama == null ? "Недоступен" : session != null && !session.enabled ? "Выключен" : session != null && session.pending != null && !session.pendingAutomatic ? "Думает…" : "Готов");
         boolean anotherRequestPending = aiSessions.entrySet().stream().anyMatch(entry -> !entry.getKey().equals(c.id) && entry.getValue().pending != null);
