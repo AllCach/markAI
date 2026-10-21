@@ -1832,7 +1832,8 @@ public final class MarkAIMod implements ModInitializer {
         var requestLevel = entity.level();
         long generation = ++session.generation;
         DialogueContext dialogue = CompanionSpecies.CHICKEN.id().equals(c.species)
-            ? new DialogueContext(chickenDialogueSnapshot(c, (Chicken) entity, owner), memoryEnabled() ? c.memory.history() : List.of())
+            ? automatic ? chickenAmbientDialogueContext(c, (Chicken) entity, owner)
+                : new DialogueContext(chickenDialogueSnapshot(c, (Chicken) entity, owner), memoryEnabled() ? c.memory.history() : List.of())
             : automatic ? ambientDialogueContext(c, wolf, owner) : dialogueContext(c, wolf, owner, message);
         String requestMessage = automatic ? AMBIENT_PROMPT : message;
         String context = dialogue.observation();
@@ -1969,6 +1970,27 @@ public final class MarkAIMod implements ModInitializer {
             context.remove("nearby_entities"); serialized = CHAT_JSON.toJson(context);
         }
         if (serialized.length() > 8192) throw new IllegalStateException("Ambient observation exceeded its context budget");
+        return new DialogueContext(serialized, List.of());
+    }
+
+    private DialogueContext chickenAmbientDialogueContext(Companion c, Chicken chicken, ServerPlayer owner) {
+        var context = com.google.gson.JsonParser.parseString(chickenDialogueSnapshot(c, chicken, owner)).getAsJsonObject();
+        context.remove("memory");
+        context.remove("last_action_result");
+        var living = context.getAsJsonObject("living");
+        living.remove("home");
+        living.remove("last_action");
+        living.remove("recent_events");
+        living.remove("behavior");
+        context.addProperty("conversation_mode", "ambient");
+        context.add("recent_lines", CHAT_JSON.toJsonTree(ambient(c).recentLines()));
+        String serialized = CHAT_JSON.toJson(context);
+        if (serialized.length() > 8192) {
+            context.remove("nearby_entities");
+            context.remove("nearby_hostiles");
+            serialized = CHAT_JSON.toJson(context);
+        }
+        if (serialized.length() > 8192) throw new IllegalStateException("Chicken ambient observation exceeded its context budget");
         return new DialogueContext(serialized, List.of());
     }
 
