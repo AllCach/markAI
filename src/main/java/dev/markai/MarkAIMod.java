@@ -380,7 +380,11 @@ public final class MarkAIMod implements ModInitializer {
         }
         if (command.equals("spawn") || command.equals("respawn")) {
             if (!owner.isAlive() || owner.isSpectator()) return 0;
-            if (c != null && !c.dead) {
+            // Legacy /mark spawn still revives the selected dead companion.
+            boolean respawn = command.equals("respawn") || c != null && c.dead;
+            if (respawn && c == null)
+                return wolfNotice(owner, "Нет компаньона для возрождения.", false);
+            if (respawn && c != null && !c.dead) {
                 // Resolve the saved chunk before deciding anything about an unloaded companion.
                 for (ServerLevel level : server.getAllLevels()) {
                     if (level.dimension().identifier().toString().equals(c.dimension))
@@ -392,6 +396,10 @@ public final class MarkAIMod implements ModInitializer {
                     : "Компаньон сохранён, но пока не найден. Повторный спавн запрещён: " + c.entity));
                 return existing != null ? 1 : 0;
             }
+            if (!respawn && companions.owned(owner.getUUID()).size() >= CompanionRegistry.MAX_COMPANIONS_PER_OWNER)
+                return wolfNotice(owner, "Достигнут предел компаньонов: " + CompanionRegistry.MAX_COMPANIONS_PER_OWNER, false);
+            if (respawn && c != null && find(c) != null)
+                return wolfNotice(owner, "Сущность компаньона ещё существует; возрождение запрещено.", false);
             ServerLevel level = (ServerLevel) owner.level();
             Wolf wolf = EntityTypes.WOLF.create(level, EntitySpawnReason.COMMAND);
             if (wolf == null) return 0;
@@ -408,7 +416,7 @@ public final class MarkAIMod implements ModInitializer {
             wolf.setPersistenceRequired();
             wolf.setAge(0);
             if (!level.addFreshEntity(wolf)) return 0;
-            Companion previousCompanion = c;
+            Companion previousCompanion = respawn ? c : null;
             c = new Companion(); c.owner = owner.getUUID(); c.entity = wolf.getUUID();
             c.id = previousCompanion == null ? UUID.randomUUID() : previousCompanion.id == null ? previousCompanion.entity : previousCompanion.id;
             c.living = previousCompanion == null ? LivingState.forIdentity(c.id) : previousCompanion.living;
@@ -421,6 +429,7 @@ public final class MarkAIMod implements ModInitializer {
             c.memory.bind(c.id);
             remember(c, wolf, level);
             companions.add(c);
+            if (!respawn) companions.select(owner.getUUID(), c.id);
             AISession previous = aiSessions.remove(c.id);
             if (previous != null) invalidate(previous);
             configure(c, wolf);
@@ -681,7 +690,8 @@ public final class MarkAIMod implements ModInitializer {
         if (wolfWork.tick(c, wolf, owner)) { c.memory.flushPending(); return; }
         livingRuntime.tick(c, wolf, owner);
         long now = level.getGameTime();
-        if (c.living.settings.autochat && aiConfig != null && aiConfig.automaticConversationSeconds > 0 && now >= c.nextAutomaticConversation && wolf.distanceTo(owner) <= 12
+        if (companions.selected(c.owner) == c && c.living.settings.autochat && aiConfig != null
+                && aiConfig.automaticConversationSeconds > 0 && now >= c.nextAutomaticConversation && wolf.distanceTo(owner) <= 12
                 && c.trick == null && c.living.activity() != Activity.DEFEND && c.living.activity() != Activity.RETREAT) {
             c.nextAutomaticConversation = now + 20;
             AISession session = aiSessions.get(c.id);
