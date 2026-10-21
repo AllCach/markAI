@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "dev.markai.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": ["MobAccessor", "WolfInventoryMixin", "MobCombatMixin", "ItemEntityAccessor", "WolfTamingMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

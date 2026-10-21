@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><testsuite><testsuite time="3.841" timestamp="2026-10-18T21:59:55.052788500Z"><testcase classname="minecraft:empty" name="minecraft:always_pass" time="0.0"/><testcase classname="fabric-gametest-api-v1:empty" name="markai-test:companion_game_test_commands_and_ownership" time="0.764"/></testsuite></testsuite>

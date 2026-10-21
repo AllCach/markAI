@@ -1,0 +1,422 @@
+{
+  "model": "qwen3:8b",
+  "thinking": true,
+  "manual_history": [],
+  "timestamp": "2026-10-19T14:01:31.824263300Z",
+  "passed": 5,
+  "results": [
+    {
+      "id": "forest",
+      "context": {
+        "mode": "stay",
+        "nearby_hostiles": [],
+        "conversation_mode": "ambient",
+        "player": {
+          "distance_blocks": 3,
+          "position": {
+            "x": 134,
+            "y": 64,
+            "z": -28
+          },
+          "in_boat": false,
+          "name": "TestOwner"
+        },
+        "companion": {
+          "position": {
+            "x": 137,
+            "y": 64,
+            "z": -28
+          },
+          "type": "minecraft:wolf",
+          "health": 40,
+          "name": "walk",
+          "in_water": false,
+          "max_health": 40,
+          "movement": {
+            "action": "IDLE",
+            "navigation_active": false,
+            "following_owner": false
+          }
+        },
+        "nearby_entities": [],
+        "dimension": "minecraft:overworld",
+        "environment": {
+          "raining": false,
+          "thundering": false,
+          "biome": "minecraft:birch_forest",
+          "dangerous_cave": false,
+          "critical_hazard": false,
+          "important_blocks": [
+            {
+              "x": 139,
+              "y": 64,
+              "type": "minecraft:birch_log",
+              "z": -28
+            }
+          ],
+          "dimension": "minecraft:overworld",
+          "time_of_day": 3000
+        },
+        "danger_now": false,
+        "recent_lines": [],
+        "personality": {
+          "confidence": 0.6,
+          "caution": 0.5,
+          "independence": 0.4,
+          "playfulness": 0.6,
+          "curiosity": 0.7,
+          "loyalty": 0.8,
+          "sociability": 0.8,
+          "trust": 0.8
+        },
+        "emotions": {
+          "trust": 80,
+          "stress": 0,
+          "mood": "CONTENT",
+          "fear": 0,
+          "curiosity": 60
+        }
+      },
+      "reply": {
+        "action": "say",
+        "say": "Пахнет осенним лесом"
+      },
+      "milliseconds": 9486,
+      "acceptedForDelivery": true,
+      "repeatGuardVerified": true,
+      "passed": true,
+      "violations": []
+    },
+    {
+      "id": "rain",
+      "context": {
+        "mode": "stay",
+        "nearby_hostiles": [],
+        "conversation_mode": "ambient",
+        "player": {
+          "distance_blocks": 3,
+          "position": {
+            "x": 134,
+            "y": 64,
+            "z": -28
+          },
+          "in_boat": false,
+          "name": "TestOwner"
+        },
+        "companion": {
+          "position": {
+            "x": 137,
+            "y": 64,
+            "z": -28
+          },
+          "type": "minecraft:wolf",
+          "health": 40,
+          "name": "walk",
+          "in_water": false,
+          "max_health": 40,
+          "movement": {
+            "action": "IDLE",
+            "navigation_active": false,
+            "following_owner": false
+          }
+        },
+        "nearby_entities": [],
+        "dimension": "minecraft:overworld",
+        "environment": {
+          "raining": true,
+          "thundering": false,
+          "biome": "minecraft:plains",
+          "dangerous_cave": false,
+          "critical_hazard": false,
+          "important_blocks": [],
+          "dimension": "minecraft:overworld",
+          "time_of_day": 6000
+        },
+        "danger_now": false,
+        "recent_lines": [
+          "Пахнет осенним лесом"
+        ],
+        "personality": {
+          "confidence": 0.6,
+          "caution": 0.5,
+          "independence": 0.4,
+          "playfulness": 0.6,
+          "curiosity": 0.7,
+          "loyalty": 0.8,
+          "sociability": 0.8,
+          "trust": 0.8
+        },
+        "emotions": {
+          "trust": 80,
+          "stress": 0,
+          "mood": "CONTENT",
+          "fear": 0,
+          "curiosity": 60
+        }
+      },
+      "reply": {
+        "action": "say",
+        "say": "Свежо после дождя"
+      },
+      "milliseconds": 11221,
+      "acceptedForDelivery": true,
+      "repeatGuardVerified": true,
+      "passed": true,
+      "violations": []
+    },
+    {
+      "id": "nether",
+      "context": {
+        "mode": "stay",
+        "nearby_hostiles": [],
+        "conversation_mode": "ambient",
+        "player": {
+          "distance_blocks": 3,
+          "position": {
+            "x": 134,
+            "y": 64,
+            "z": -28
+          },
+          "in_boat": false,
+          "name": "TestOwner"
+        },
+        "companion": {
+          "position": {
+            "x": 137,
+            "y": 64,
+            "z": -28
+          },
+          "type": "minecraft:wolf",
+          "health": 40,
+          "name": "walk",
+          "in_water": false,
+          "max_health": 40,
+          "movement": {
+            "action": "IDLE",
+            "navigation_active": false,
+            "following_owner": false
+          }
+        },
+        "nearby_entities": [],
+        "dimension": "minecraft:the_nether",
+        "environment": {
+          "raining": false,
+          "thundering": false,
+          "biome": "minecraft:nether_wastes",
+          "dangerous_cave": false,
+          "critical_hazard": false,
+          "important_blocks": [
+            {
+              "x": 139,
+              "y": 64,
+              "type": "minecraft:netherrack",
+              "z": -28
+            }
+          ],
+          "dimension": "minecraft:the_nether",
+          "time_of_day": 6000
+        },
+        "danger_now": false,
+        "recent_lines": [
+          "Пахнет осенним лесом",
+          "Свежо после дождя"
+        ],
+        "personality": {
+          "confidence": 0.6,
+          "caution": 0.5,
+          "independence": 0.4,
+          "playfulness": 0.6,
+          "curiosity": 0.7,
+          "loyalty": 0.8,
+          "sociability": 0.8,
+          "trust": 0.8
+        },
+        "emotions": {
+          "trust": 80,
+          "stress": 0,
+          "mood": "CONTENT",
+          "fear": 0,
+          "curiosity": 60
+        }
+      },
+      "reply": {
+        "action": "say",
+        "say": "Солнце греет спину"
+      },
+      "milliseconds": 12056,
+      "acceptedForDelivery": true,
+      "repeatGuardVerified": true,
+      "passed": true,
+      "violations": []
+    },
+    {
+      "id": "quiet_evening",
+      "context": {
+        "mode": "stay",
+        "nearby_hostiles": [],
+        "conversation_mode": "ambient",
+        "player": {
+          "distance_blocks": 3,
+          "position": {
+            "x": 134,
+            "y": 64,
+            "z": -28
+          },
+          "in_boat": false,
+          "name": "TestOwner"
+        },
+        "companion": {
+          "position": {
+            "x": 137,
+            "y": 64,
+            "z": -28
+          },
+          "type": "minecraft:wolf",
+          "health": 40,
+          "name": "walk",
+          "in_water": false,
+          "max_health": 40,
+          "movement": {
+            "action": "IDLE",
+            "navigation_active": false,
+            "following_owner": false
+          }
+        },
+        "nearby_entities": [],
+        "dimension": "minecraft:overworld",
+        "environment": {
+          "raining": false,
+          "thundering": false,
+          "biome": "minecraft:plains",
+          "dangerous_cave": false,
+          "critical_hazard": false,
+          "important_blocks": [],
+          "dimension": "minecraft:overworld",
+          "time_of_day": 17000
+        },
+        "danger_now": false,
+        "recent_lines": [
+          "Пахнет осенним лесом",
+          "Свежо после дождя",
+          "Солнце греет спину"
+        ],
+        "personality": {
+          "confidence": 0.6,
+          "caution": 0.5,
+          "independence": 0.4,
+          "playfulness": 0.6,
+          "curiosity": 0.7,
+          "loyalty": 0.8,
+          "sociability": 0.8,
+          "trust": 0.8
+        },
+        "emotions": {
+          "trust": 80,
+          "stress": 0,
+          "mood": "CONTENT",
+          "fear": 0,
+          "curiosity": 60
+        }
+      },
+      "reply": {
+        "action": "say",
+        "say": "Мерцанье звёзд над поляной"
+      },
+      "milliseconds": 10165,
+      "acceptedForDelivery": true,
+      "repeatGuardVerified": true,
+      "passed": true,
+      "violations": []
+    },
+    {
+      "id": "forest_again_with_recent_lines",
+      "context": {
+        "mode": "stay",
+        "nearby_hostiles": [],
+        "conversation_mode": "ambient",
+        "player": {
+          "distance_blocks": 3,
+          "position": {
+            "x": 134,
+            "y": 64,
+            "z": -28
+          },
+          "in_boat": false,
+          "name": "TestOwner"
+        },
+        "companion": {
+          "position": {
+            "x": 137,
+            "y": 64,
+            "z": -28
+          },
+          "type": "minecraft:wolf",
+          "health": 40,
+          "name": "walk",
+          "in_water": false,
+          "max_health": 40,
+          "movement": {
+            "action": "IDLE",
+            "navigation_active": false,
+            "following_owner": false
+          }
+        },
+        "nearby_entities": [],
+        "dimension": "minecraft:overworld",
+        "environment": {
+          "raining": false,
+          "thundering": false,
+          "biome": "minecraft:birch_forest",
+          "dangerous_cave": false,
+          "critical_hazard": false,
+          "important_blocks": [
+            {
+              "x": 139,
+              "y": 64,
+              "type": "minecraft:birch_log",
+              "z": -28
+            }
+          ],
+          "dimension": "minecraft:overworld",
+          "time_of_day": 3000
+        },
+        "danger_now": false,
+        "recent_lines": [
+          "Пахнет осенним лесом",
+          "Свежо после дождя",
+          "Солнце греет спину",
+          "Мерцанье звёзд над поляной"
+        ],
+        "personality": {
+          "confidence": 0.6,
+          "caution": 0.5,
+          "independence": 0.4,
+          "playfulness": 0.6,
+          "curiosity": 0.7,
+          "loyalty": 0.8,
+          "sociability": 0.8,
+          "trust": 0.8
+        },
+        "emotions": {
+          "trust": 80,
+          "stress": 0,
+          "mood": "CONTENT",
+          "fear": 0,
+          "curiosity": 60
+        }
+      },
+      "reply": {
+        "action": "say",
+        "say": "Тени танцуют на поляне"
+      },
+      "milliseconds": 9627,
+      "acceptedForDelivery": true,
+      "repeatGuardVerified": true,
+      "passed": true,
+      "violations": []
+    }
+  ],
+  "total": 5,
+  "synthetic_observations": true,
+  "prompt": "[Самостоятельная реплика: игрок сейчас ничего не спрашивал. Коротко отреагируй на свежую обстановку, событие или настроение из текущего снимка. Не продолжай старый разговор и не повторяй recent_lines. Не придумывай близость дома, не отдавай команды игроку и не обещай новое действие. Только action=say, без вопроса.]"
+}

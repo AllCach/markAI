@@ -1,0 +1,29 @@
+[
+  {
+    "expected_action": "say",
+    "prompt": "Привет! Представься одним предложением.",
+    "milliseconds": 74302,
+    "reply": {
+      "action": "say",
+      "say": "Привет, я Марк, курица-компаньон, и я не боюсь ничего, кроме лука!"
+    }
+  },
+  {
+    "expected_action": "follow",
+    "prompt": "Марк, следуй за мной.",
+    "milliseconds": 753,
+    "reply": {
+      "action": "follow",
+      "say": "Хорошо, иду за вами, TestOwner. Не забудьте кормить меня!"
+    }
+  },
+  {
+    "expected_action": "stay",
+    "prompt": "Оставайся здесь. Не следуй за мной.",
+    "milliseconds": 705,
+    "reply": {
+      "action": "stay",
+      "say": "Хорошо, останусь здесь. Жду, когда вы вернётесь!"
+    }
+  }
+]

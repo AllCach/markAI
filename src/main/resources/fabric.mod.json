@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "markai",
+  "version": "${version}",
+  "name": "MarkAI",
+  "description": "Living wolf companion Mark: personality, emotions, memory, dialogue, training, inventory and native companion UI.",
+  "environment": "*",
+  "entrypoints": { "main": ["dev.markai.MarkAIMod"], "client": ["dev.markai.client.MarkAIClient"] },
+  "mixins": ["markai.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

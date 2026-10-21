@@ -1,0 +1,25 @@
+{
+    "schemaVersion":  1,
+    "id":  "markai-test",
+    "version":  "1.0.0",
+    "name":  "MarkAI integration tests",
+    "environment":  "*",
+    "entrypoints":  {
+                        "fabric-gametest":  [
+                                                "dev.markai.CompanionGameTest",
+                                                "dev.markai.AIGameTest",
+                                                "dev.markai.TrainingGameTest",
+                                                "dev.markai.InventoryGameTest",
+                                                "dev.markai.LivingCompanionGameTest",
+                                                "dev.markai.CompanionReviewGameTest",
+                                                "dev.markai.WalkOrdersGameTest"
+                                            ],
+                        "fabric-client-gametest":  [
+                                                       "dev.markai.ClientUiGameTest"
+                                                   ]
+                    },
+    "depends":  {
+                    "markai":  "*",
+                    "fabric-api":  "*"
+                }
+}

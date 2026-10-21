@@ -1,0 +1,142 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+}
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+    withSourcesJar()
+}
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+sourceSets {
+    aiChecks {
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
+    gametest {
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
+    brainChecks {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+tasks.register('brainTest', JavaExec) {
+    dependsOn brainChecksClasses
+    classpath = sourceSets.brainChecks.runtimeClasspath
+    mainClass = 'dev.markai.brain.MarkBrainTest'
+}
+check.dependsOn brainTest
+tasks.register('aiTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.ai.OllamaClientTest'
+    jvmArgs '--add-modules=jdk.httpserver'
+}
+check.dependsOn aiTest
+tasks.register('dialogueIntentTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.ai.DialogueIntentTest'
+}
+check.dependsOn dialogueIntentTest
+tasks.register('chatJournalTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.chat.ChatJournalTest'
+}
+check.dependsOn chatJournalTest
+tasks.register('companionStateTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.memory.CompanionStateTest'
+}
+check.dependsOn companionStateTest
+
+['livingCompanionTest': 'dev.markai.brain.LivingCompanionTest',
+ 'actionIntentTest': 'dev.markai.actions.IntentParserTest',
+ 'wolfOrderIntentTest': 'dev.markai.actions.WolfOrderIntentTest',
+ 'groundedFactsTest': 'dev.markai.ai.GroundedFactsTest',
+ 'ambientConversationTest': 'dev.markai.ai.AmbientConversationTest',
+ 'networkRulesTest': 'dev.markai.network.NetworkRulesTest',
+ 'llmProviderTest': 'dev.markai.ai.LlmProviderTest',
+ 'repetitionGuardTest': 'dev.markai.ai.RepetitionGuardLlmProviderTest',
+ 'memorySystemTest': 'dev.markai.memory.MemorySystemTest'].each { taskName, testMain ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn aiChecksClasses
+        classpath = sourceSets.aiChecks.runtimeClasspath
+        mainClass = testMain
+        jvmArgs '--add-modules=jdk.httpserver'
+    }
+    check.dependsOn taskName
+}
+tasks.register('dialogueQualityTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.ai.DialogueQualityTest'
+}
+tasks.register('dialogueLoopQualityTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.ai.DialogueLoopQualityTest'
+}
+tasks.register('memoryQualityTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.ai.DialogueQualityTest'
+    args 'memory'
+}
+tasks.register('swordQualityTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.ai.DialogueQualityTest'
+    args 'sword'
+}
+
+tasks.register('ambientQualityTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.ai.AmbientQualityTest'
+}
+tasks.register('ollamaSmokeTest', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.ai.OllamaSmokeTest'
+}
+loom {
+    mods {
+        markai { sourceSet sourceSets.main }
+        'markai-test' { sourceSet sourceSets.gametest }
+    }
+    runs {
+        gameTest {
+            server()
+            name 'MarkAI GameTests'
+            source sourceSets.gametest
+            runDir 'build/gametest'
+            vmArg '-Dfabric-api.gametest'
+            vmArg '-Dfabric-api.gametest.report-file=reports/report.xml'
+        }
+        clientGameTest {
+            client()
+            name 'MarkAI Client UI GameTest'
+            source sourceSets.gametest
+            runDir 'build/client-gametest'
+            vmArg '-Dfabric.client.gametest'
+            vmArg '-Dfabric.client.gametest.modid=markai-test'
+            vmArg '-Xmx4G'
+        }
+    }
+}

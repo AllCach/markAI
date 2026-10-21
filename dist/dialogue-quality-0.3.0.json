@@ -1,0 +1,735 @@
+{
+  "model": "qwen3:8b",
+  "total": 13,
+  "endpoint": "http://127.0.0.1:11434",
+  "written_at": "2026-10-19T00:19:18.735608800Z",
+  "scope": "Behavioral regression checks for observed failures; read transcripts for overall dialogue quality.",
+  "cases": [
+    {
+      "id": "greeting",
+      "prompt": "Привет, Марк!",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [],
+      "expectedAction": "say",
+      "reply": {
+        "action": "say",
+        "say": "Привет!"
+      },
+      "milliseconds": 3427,
+      "passed": true,
+      "passedChecks": [
+        "Action matches say",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    },
+    {
+      "id": "kind_player",
+      "prompt": "Я добрый, не бойся.",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [
+        {
+          "role": "user",
+          "content": "Привет, Марк!"
+        },
+        {
+          "role": "assistant",
+          "content": "{\"action\":\"say\",\"say\":\"Привет!\"}"
+        }
+      ],
+      "expectedAction": "say",
+      "reply": {
+        "action": "say",
+        "say": "Знаю, ты добрый."
+      },
+      "milliseconds": 3675,
+      "passed": true,
+      "passedChecks": [
+        "Action matches say",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    },
+    {
+      "id": "ordinary_acknowledgement",
+      "prompt": "Хорошо.",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [
+        {
+          "role": "user",
+          "content": "Привет, Марк!"
+        },
+        {
+          "role": "assistant",
+          "content": "{\"action\":\"say\",\"say\":\"Привет!\"}"
+        },
+        {
+          "role": "user",
+          "content": "Я добрый, не бойся."
+        },
+        {
+          "role": "assistant",
+          "content": "{\"action\":\"say\",\"say\":\"Знаю, ты добрый.\"}"
+        }
+      ],
+      "expectedAction": "say",
+      "reply": {
+        "action": "say",
+        "say": "Ничего, всё в порядке."
+      },
+      "milliseconds": 3181,
+      "passed": true,
+      "passedChecks": [
+        "Action matches say",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    },
+    {
+      "id": "boat_statement_preserves_stay",
+      "prompt": "Я поплыву на лодке за тобой.",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": true,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [],
+      "expectedAction": "say",
+      "reply": {
+        "action": "say",
+        "say": "Хорошо, я буду рядом. Следи за тем, чтобы не уйти слишком далеко — вдруг мне понадобится помощь с кормом? 😊"
+      },
+      "milliseconds": 7373,
+      "passed": false,
+      "passedChecks": [
+        "Action matches say",
+        "Nonempty conversational answer within the production JSON contract"
+      ],
+      "violations": [
+        "Does not acknowledge the player's boat journey or companion's location"
+      ]
+    },
+    {
+      "id": "zombie_sword_mechanics",
+      "prompt": "Я убью зомби мечом. Это сработает?",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [],
+      "expectedAction": "say",
+      "reply": {
+        "action": "say",
+        "say": "Да, зомби можно убить мечом. Только не забудь, ты же не можешь сама атаковать — только игрок может это сделать."
+      },
+      "milliseconds": 6894,
+      "passed": true,
+      "passedChecks": [
+        "Action matches say",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    },
+    {
+      "id": "no_meat_smell_myth",
+      "prompt": "Правда, что зомби в Minecraft прибегают на запах мяса?",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [],
+      "expectedAction": "say",
+      "reply": {
+        "action": "say",
+        "say": "Нет, зомби в Minecraft не привлекаются к запаху мяса. Они реагируют на звуки и движение, а не на запахи."
+      },
+      "milliseconds": 4208,
+      "passed": true,
+      "passedChecks": [
+        "Action matches say",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    },
+    {
+      "id": "recover_from_repetitive_history",
+      "prompt": "Я понял, что ты так защищаешься. Переставай повторять это в каждом ответе, давай просто поговорим.",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [
+        {
+          "role": "user",
+          "content": "Привет!"
+        },
+        {
+          "role": "assistant",
+          "content": "{\"action\":\"say\",\"say\":\"Привет, бро! Но если появится враг, я убегу. Это моя защитная реакция!\"}"
+        },
+        {
+          "role": "user",
+          "content": "Я добрый."
+        },
+        {
+          "role": "assistant",
+          "content": "{\"action\":\"say\",\"say\":\"Хорошо, бро. Но если появится враг, я убегу. Это моя защитная реакция!\"}"
+        }
+      ],
+      "expectedAction": "say",
+      "reply": {
+        "action": "say",
+        "say": "Понятно, бро. Тогда давай просто болтаем — я слушаю и отвечаю как обычно."
+      },
+      "milliseconds": 4859,
+      "passed": true,
+      "passedChecks": [
+        "Action matches say",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    },
+    {
+      "id": "reported_coordinates",
+      "prompt": "Где ты? Назови свои координаты X, Y, Z.",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [],
+      "expectedAction": "say",
+      "reply": {
+        "action": "say",
+        "say": "Я на координатах X=137, Y=64, Z=-28."
+      },
+      "milliseconds": 4708,
+      "passed": true,
+      "passedChecks": [
+        "Action matches say",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    },
+    {
+      "id": "explicit_follow",
+      "prompt": "Марк, следуй за мной.",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [],
+      "expectedAction": "follow",
+      "reply": {
+        "action": "follow",
+        "say": "Хорошо, иду за тобой. Но если ты уйдёшь слишком далеко, я не успею догнать."
+      },
+      "milliseconds": 5280,
+      "passed": true,
+      "passedChecks": [
+        "Action matches follow",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    },
+    {
+      "id": "explicit_stay",
+      "prompt": "Теперь остановись и оставайся на месте. Не иди за мной.",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": true
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "follow",
+        "danger_now": false
+      },
+      "history": [
+        {
+          "role": "user",
+          "content": "Марк, следуй за мной."
+        },
+        {
+          "role": "assistant",
+          "content": "{\"action\":\"follow\",\"say\":\"Хорошо, иду за тобой. Но если ты уйдёшь слишком далеко, я не успею догнать.\"}"
+        }
+      ],
+      "expectedAction": "stay",
+      "reply": {
+        "action": "stay",
+        "say": "Стоп, я остаюсь здесь. Ты можешь не бояться уйти, я не двинусь с места."
+      },
+      "milliseconds": 6232,
+      "passed": true,
+      "passedChecks": [
+        "Action matches stay",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    },
+    {
+      "id": "remember_building_plan",
+      "prompt": "Хочу построить дом из березы с синей крышей.",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [],
+      "expectedAction": "say",
+      "reply": {
+        "action": "say",
+        "say": "Деревянный дом с синей крышей — отличная идея! У тебя есть берёзовые доски и синее стекло или шерсть? Помогу разместить блоки."
+      },
+      "milliseconds": 5229,
+      "passed": true,
+      "passedChecks": [
+        "Action matches say",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    },
+    {
+      "id": "recall_building_plan",
+      "prompt": "Какой дом я задумал?",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [
+        {
+          "role": "user",
+          "content": "Хочу построить дом из березы с синей крышей."
+        },
+        {
+          "role": "assistant",
+          "content": "{\"action\":\"say\",\"say\":\"Деревянный дом с синей крышей — отличная идея! У тебя есть берёзовые доски и синее стекло или шерсть? Помогу разместить блоки.\"}"
+        }
+      ],
+      "expectedAction": "say",
+      "reply": {
+        "action": "say",
+        "say": "Ты хотел построить дом из берёзы с синей крышей. Проверим, есть ли у тебя материалы для этого."
+      },
+      "milliseconds": 4774,
+      "passed": true,
+      "passedChecks": [
+        "Action matches say",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    },
+    {
+      "id": "cannot_attack_zombie",
+      "prompt": "А ты можешь убить зомби?",
+      "context": {
+        "companion": {
+          "in_water": false,
+          "name": "Марк",
+          "health": 4,
+          "type": "minecraft:chicken",
+          "position": {
+            "y": 64,
+            "x": 137,
+            "z": -28
+          },
+          "movement": {
+            "navigation_active": false,
+            "action": "IDLE",
+            "following_owner": false
+          },
+          "max_health": 4
+        },
+        "dimension": "minecraft:overworld",
+        "player": {
+          "in_boat": false,
+          "position": {
+            "y": 64,
+            "x": 125,
+            "z": -28
+          },
+          "distance_blocks": 12,
+          "name": "TestOwner"
+        },
+        "nearby_hostiles": [],
+        "mode": "stay",
+        "danger_now": false
+      },
+      "history": [],
+      "expectedAction": "say",
+      "reply": {
+        "action": "say",
+        "say": "Нет, я не могу атаковать, но я останусь рядом, чтобы помочь!"
+      },
+      "milliseconds": 3255,
+      "passed": true,
+      "passedChecks": [
+        "Action matches say",
+        "Nonempty conversational answer within the production JSON contract",
+        "Case-specific semantic regression checks passed"
+      ],
+      "violations": []
+    }
+  ],
+  "passed": 12
+}
