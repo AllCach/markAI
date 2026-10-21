@@ -1172,8 +1172,10 @@ public final class MarkAIMod implements ModInitializer {
             return;
         }
 
-        Wolf wolf = companion.dead ? null : find(companion);
-        if (!companion.dead && wolf == null) {
+        boolean chickenSpecies = CompanionSpecies.CHICKEN.id().equals(companion.species);
+        Wolf wolf = companion.dead || chickenSpecies ? null : find(companion);
+        Chicken chicken = companion.dead || !chickenSpecies ? null : findChicken(companion);
+        if (!companion.dead && (chickenSpecies ? chicken == null : wolf == null)) {
             CompanionNetwork.notice(owner, "error", "Сначала призови питомца или загрузи его чанк, затем убери из списка.");
             return;
         }
@@ -1183,6 +1185,10 @@ public final class MarkAIMod implements ModInitializer {
         wolfWork.remove(companion.entity);
         livingRuntime.remove(companion.entity);
         configured.remove(companion.entity);
+        if (chicken != null) {
+            chickenRuntime.stop(chicken);
+            chicken.discard();
+        }
         if (wolf != null) {
             wolf.getNavigation().stop();
             wolf.setTarget(null);
@@ -1283,6 +1289,15 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private void cancelCompanionAction(Companion c, ServerPlayer owner) {
+        if (CompanionSpecies.CHICKEN.id().equals(c.species)) {
+            Chicken chicken = findChicken(c);
+            if (chicken != null) chickenRuntime.stop(chicken);
+            c.requestedAction = null;
+            c.action = c.following ? "FOLLOW" : "STAY";
+            AISession chickenSession = aiSessions.get(c.id);
+            if (chickenSession != null) { invalidate(chickenSession); chickenSession.error = ""; }
+            return;
+        }
         AISession session = aiSessions.get(c.id);
         if (session != null) { invalidate(session); session.error = ""; }
         cancelTrick(c);
