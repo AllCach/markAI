@@ -3,7 +3,7 @@ package dev.markai;
 import com.google.gson.Gson;
 import com.google.gson.JsonParser;
 import dev.markai.ai.OllamaClient;
-import dev.markai.training.DogTraining.Trick;
+import dev.markai.training.WolfTraining.Trick;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.fabricmc.loader.api.FabricLoader;
