@@ -215,7 +215,11 @@ public final class CompanionScreen extends Screen {
             Button button = addButton(label(buttonKey),
                 left + 10 + (i % columns) * (w + 3), contentTop + (i / columns) * gapY,
                 w, () -> command(action.startsWith("guardian") || action.equals("hunter") || action.equals("tracker") || action.equals("nimble") || action.equals("lookout") || action.equals("evasive") ? "talent_" + action : action));
-            if (NetworkRules.groupAction(action)) button.setTooltip(Tooltip.create(tr("markai.command.hint.group_modifier")));
+            if (List.of("guardian", "hunter", "tracker", "nimble", "lookout", "evasive").contains(action)) {
+                button.setTooltip(Tooltip.create(tr("markai.talent." + action + ".desc")));
+            } else if (NetworkRules.groupAction(action)) {
+                button.setTooltip(Tooltip.create(tr("markai.command.hint.group_modifier")));
+            }
         }
     }
     private void initDialogue() {
