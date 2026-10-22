@@ -2419,15 +2419,18 @@ public final class MarkAIMod implements ModInitializer {
         if (journal == null) return List.of();
         List<Map<String, Object>> result = new ArrayList<>();
         for (FieldJournal.Entry entry : journal.entries()) {
+            if (result.size() >= 16) break; // Keep the complete UI snapshot under the packet size limit.
             var item = new LinkedHashMap<String, Object>();
             item.put("species_id", entry.speciesId);
             item.put("observations", entry.observationCount);
             item.put("stage", entry.stage().name());
             item.put("first_observed_at", entry.firstObservedAt);
             item.put("last_observed_at", entry.lastObservedAt);
-            item.put("biomes", entry.biomes);
-            item.put("notes", entry.notes.stream().map(note -> Map.of(
-                "id", note.id(), "text", note.text(), "created_at", note.createdAt())).toList());
+            item.put("biomes", entry.biomes.stream().limit(4).toList());
+            item.put("total_notes", entry.notes.size());
+            item.put("notes", entry.notes.stream().limit(4).map(note -> Map.of(
+                "id", note.id(), "text", note.text().length() <= 96 ? note.text() : note.text().substring(0, 96),
+                "created_at", note.createdAt())).toList());
             var knowledge = new LinkedHashMap<String, String>();
             for (FieldJournal.Topic topic : FieldJournal.Topic.values()) {
                 FieldJournal.Knowledge unlocked = journal.knowledge(entry.speciesId, topic);
