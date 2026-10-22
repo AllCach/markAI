@@ -20,6 +20,9 @@ import net.minecraft.world.entity.animal.wolf.Wolf;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.entity.EntityTypeTest;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
@@ -218,11 +221,63 @@ final class WolfWorkRuntime {
         if (now >= job.progressUntil || job.failedPaths >= 3) skip(wolf, job, item);
     }
 
+    /**
+     * Item entities sit above their support block. Target their ground-level feet cell,
+     * not the floating entity Y coordinate, and try neighboring walkable cells so a
+     * one-block ledge or raised floor does not make an otherwise reachable item unreachable.
+     */
+    private static Path findCollectionPath(Wolf wolf, ItemEntity item, ServerLevel level) {
+        BlockPos itemBlock = item.blockPosition();
+        Path best = null;
+        double bestCost = Double.POSITIVE_INFINITY;
+        int[][] heightsAndOffsets = {
+            {0, 0, 0}, {-1, 0, 0}, {1, 0, 0}, {0, 0, -1}, {0, 0, 1},
+            {-1, 0, -1}, {-1, 0, 1}, {1, 0, -1}, {1, 0, 1},
+            {0, -1, 0}, {-1, -1, 0}, {1, -1, 0}, {0, -1, -1}, {0, -1, 1},
+            {0, 1, 0}, {-1, 1, 0}, {1, 1, 0}, {0, 1, -1}, {0, 1, 1}
+        };
+        for (int[] offset : heightsAndOffsets) {
+            BlockPos feet = itemBlock.offset(offset[0], offset[1], offset[2]);
+            Vec3 destination = new Vec3(feet.getX() + .5, feet.getY(), feet.getZ() + .5);
+            if (!CompanionSafety.safeNavigationTarget(level, destination)) continue;
+            Path candidate = wolf.getNavigation().createPath(feet, 0);
+            if (candidate == null || !candidate.canReach()) continue;
+            double cost = candidate.getNodeCount() + wolf.distanceToSqr(destination) * .001;
+            if (cost < bestCost) {
+                best = candidate;
+                bestCost = cost;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * The vanilla entity ray can hit the side of a supporting block when an item lies
+     * on a higher surface. Accept a clear ray to any upper point of the item's real box,
+     * while still rejecting items completely hidden behind solid walls.
+     */
+    private static boolean visibleForCollection(Wolf wolf, ItemEntity item) {
+        if (wolf.hasLineOfSight(item)) return true;
+        if (!(item.level() instanceof ServerLevel level)) return false;
+        AABB box = item.getBoundingBox();
+        Vec3 from = wolf.getEyePosition();
+        double[] xs = {box.minX + .02, (box.minX + box.maxX) * .5, box.maxX - .02};
+        double[] zs = {box.minZ + .02, (box.minZ + box.maxZ) * .5, box.maxZ - .02};
+        double y = box.maxY - .02;
+        for (double x : xs) for (double z : zs) {
+            Vec3 to = new Vec3(x, y, z);
+            if (from.distanceToSqr(to) < .01) return true;
+            if (level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, wolf))
+                    .getType() == HitResult.Type.MISS) return true;
+        }
+        return false;
+    }
+
     private static boolean eligible(ItemEntity item, Wolf wolf, ServerPlayer owner, Job job) {
         if (!item.isAlive() || item.isRemoved() || item.isPassenger() || item.hasPickUpDelay() || item.getItem().isEmpty()
                 || item.level() != job.level || job.unreachable.contains(item.getUUID())
                 || item.position().distanceToSqr(job.origin) > job.radius * job.radius
-                || !job.level.hasChunkAt(item.blockPosition()) || !wolf.hasLineOfSight(item)) return false;
+                || !job.level.hasChunkAt(item.blockPosition()) || !visibleForCollection(wolf, item)) return false;
         UUID reservation = ((ItemEntityAccessor) item).markai$getPickupTarget();
         if (reservation != null && !reservation.equals(owner.getUUID())) return false;
         Entity thrower = item.getOwner();
@@ -295,16 +350,9 @@ final class WolfWorkRuntime {
             ServerPlayer owner = job.level.getServer().getPlayerList().getPlayer(companion.owner);
             if (owner == null || !eligible(item, wolf, owner, job)) return;
             wolf.getLookControl().setLookAt(item, 30, 30); job.nextPath = job.level.getGameTime() + 20;
-            Vec3 destination = item.position();
-            if (!CompanionSafety.safeNavigationTarget(job.level, destination)) {
-                BlockPos block = item.blockPosition();
-                destination = new Vec3(item.getX(), block.getY(), item.getZ());
-                if (!CompanionSafety.safeNavigationTarget(job.level, destination)) {
-                    destination = destination.add(0, .5, 0);
-                    if (!CompanionSafety.safeNavigationTarget(job.level, destination)) { skip(wolf, job, item); return; }
-                }
-            }
-            if (!wolf.getNavigation().moveTo(destination.x, destination.y, destination.z, 1.1)) job.failedPaths++;
+            Path path = findCollectionPath(wolf, item, job.level);
+            if (path == null) { job.failedPaths++; return; }
+            if (!wolf.getNavigation().moveTo(path, 1.1)) job.failedPaths++;
             else job.failedPaths = 0;
         }
     }
