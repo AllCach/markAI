@@ -815,6 +815,11 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private int startWolfOrder(Companion companion, ServerPlayer owner, String command) {
+        if (CompanionSpecies.CHICKEN.id().equals(companion.species)) {
+            String label = command.equals("attack") ? "атака" : "сбор предметов";
+            return wolfNotice(owner, "Это курица-компаньон: команда «" + label
+                + "» пока поддерживается только волками. Для курицы доступны «Следовать», «Оставаться» и «Стоп».", false);
+        }
         Wolf wolf = find(companion);
         if (wolf == null || !owner.isAlive() || owner.isSpectator() || wolf.level() != owner.level()
                 || owner.distanceToSqr(wolf) > 256) {
