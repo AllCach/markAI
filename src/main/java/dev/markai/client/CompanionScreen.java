@@ -181,6 +181,7 @@ public final class CompanionScreen extends Screen {
         // Profile is for managing a tamed/registered companion, not creating one.
         String[] actions = !hasSelection ? new String[0]
             : isSelectedDead() ? new String[] {"spawn"} : new String[] {"summon", "dismiss"};
+        if (actions.length == 0) return;
         int columns = Math.min(profileActionColumns(), actions.length);
         int rows = (actions.length + columns - 1) / columns;
         int w = (panelWidth - 20 - (columns - 1) * 3) / columns;
