@@ -24,8 +24,8 @@ import dev.markai.network.CompanionNetwork;
 import dev.markai.network.NetworkRules;
 import dev.markai.chat.ChatJournal;
 import dev.markai.memory.CompanionMemory;
-import dev.markai.training.DogTraining;
-import dev.markai.training.DogTraining.Trick;
+import dev.markai.training.WolfTraining;
+import dev.markai.training.WolfTraining.Trick;
 import dev.markai.taming.WolfTamingHooks;
 import dev.markai.inventory.CompanionInventoryHolder;
 import dev.markai.mixin.MobAccessor;
@@ -143,7 +143,7 @@ public final class MarkAIMod implements ModInitializer {
         boolean dismissed;
         LivingState living = new LivingState();
         CompanionMemory memory = new CompanionMemory();
-        DogTraining training = new DogTraining();
+        WolfTraining training = new WolfTraining();
         CompanionProgression progression = new CompanionProgression();
         String lastObservedPlace;
         transient long nextMessage;
@@ -987,7 +987,7 @@ public final class MarkAIMod implements ModInitializer {
             // Keep the wolf's melee, owner defense, swimming, sitting and natural sounds.
             goals.removeAllGoals(goal -> goal instanceof FollowOwnerGoal);
             goals.addGoal(1, livingRuntime.goal(c, wolf));
-            goals.addGoal(3, new DogTrickGoal(c, wolf));
+            goals.addGoal(3, new WolfTrickGoal(c, wolf));
             wolfWork.configure(c, wolf);
             // A carried item is an ordinary persistent passenger, never a copied inventory item.
             for (Entity passenger : List.copyOf(wolf.getPassengers()))
@@ -1338,10 +1338,10 @@ public final class MarkAIMod implements ModInitializer {
         wolf.setOrderedToSit(wolf.getTarget() == null && !c.following);
     }
 
-    private final class DogTrickGoal extends Goal {
+    private final class WolfTrickGoal extends Goal {
         private final Companion companion;
         private final Wolf wolf;
-        DogTrickGoal(Companion companion, Wolf wolf) {
+        WolfTrickGoal(Companion companion, Wolf wolf) {
             this.companion = companion; this.wolf = wolf;
             setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
         }
@@ -1447,7 +1447,7 @@ public final class MarkAIMod implements ModInitializer {
             wolf.setTarget(null);
             livingRuntime.unconfigure(companion, wolf);
             var goals = ((MobAccessor) wolf).markai$goals();
-            goals.removeAllGoals(goal -> goal instanceof DogTrickGoal || goal instanceof FollowOwnerGoal);
+            goals.removeAllGoals(goal -> goal instanceof WolfTrickGoal || goal instanceof FollowOwnerGoal);
             wolfWork.unconfigure(wolf);
             goals.addGoal(6, new FollowOwnerGoal(wolf, 1.0, 10.0F, 2.0F));
             wolf.setOrderedToSit(false);
