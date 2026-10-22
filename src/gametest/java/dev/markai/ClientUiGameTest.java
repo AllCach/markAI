@@ -483,6 +483,10 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                 connection.waitForServerboundPackets();
                 context.waitFor(client -> MarkAIClient.STATE.companions().size() == 3
                     && MarkAIClient.STATE.string("species", "").equals("minecraft:chicken"));
+                server.runOnServer(instance -> {
+                    ServerPlayer owner = instance.getPlayerList().getPlayer(ownerId);
+                    instance.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark ai off");
+                });
                 context.takeScreenshot("markai-after-create-chicken");
                 context.clickScreenButton("markai.tab.commands");
                 context.runOnClient(client -> {
