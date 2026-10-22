@@ -11,7 +11,7 @@ public final class NetworkRulesTest {
         for (String action : new String[]{"attack", "collect", "stop", "come", "stay", "follow", "rest", "wander", "home", "sethome", "investigate"}) {
             check(NetworkRules.groupAction(action) && NetworkRules.action("all:" + action), "Allowed group action: " + action);
         }
-        for (String action : new String[]{"spawn", "respawn", "tame", "inventory", "status", "forget", "cancel",
+        for (String action : new String[]{"spawn", "spawn_chicken", "respawn", "tame", "inventory", "status", "forget", "cancel",
                 "summon", "dismiss", "memory", "deleteMemory", "train", "", "ATTACK", "../attack", "attack\nkill @e"}) {
             check(!NetworkRules.groupAction(action) && !NetworkRules.action("all:" + action), "Rejected group action: " + action);
         }
