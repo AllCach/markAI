@@ -347,6 +347,18 @@ public final class MultiCompanionGameTest {
         helper.assertTrue(savedWolf && savedChicken,
             "The real world save persists both species identities without converting the chicken to a wolf");
 
+        // Selecting a live Chicken must not hijack the canonical /mark spawn command.
+        command(owner, "mark spawn");
+        MarkAIMod.Companion secondWolf = registry.selected(owner.getUUID());
+        helper.assertTrue(secondWolf != null && secondWolf != chickenCompanion
+                && "minecraft:wolf".equals(secondWolf.species),
+            "The canonical spawn command creates a wolf even while a live chicken is selected");
+        helper.assertTrue("Walk 2".equals(secondWolf.living.name)
+                && "Mark".equals(chickenCompanion.living.name),
+            "Default names and numbering are calculated per species, regardless of taming order");
+        helper.assertTrue(wolf.isAlive() && chicken.isAlive(),
+            "Adding a wolf must not replace or remove the existing chicken or wolf");
+
         helper.startSequence().thenIdle(30).thenExecute(() -> {
             helper.assertTrue(wolf.isAlive() && chicken.isAlive()
                     && helper.getLevel().getEntity(wolfCompanion.entity) == wolf
