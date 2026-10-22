@@ -69,7 +69,8 @@ public final class FieldJournal {
         }
 
         String entityId = entityUuid.toString();
-        if (!entry.observedEntityIds.contains(entityId)) {
+        boolean newlyObserved = !entry.observedEntityIds.contains(entityId);
+        if (newlyObserved) {
             if (entry.observedEntityIds.size() >= MAX_UNIQUE_ENTITIES_PER_SPECIES) return false;
             entry.observedEntityIds.add(entityId);
             entry.observationCount = entry.observedEntityIds.size();
@@ -79,7 +80,7 @@ public final class FieldJournal {
                 && entry.biomes.size() < MAX_BIOMES_PER_SPECIES) {
             entry.biomes.add(biomeId);
         }
-        return true;
+        return newlyObserved;
     }
 
     public boolean addNote(String speciesId, String text, long gameTime) {
