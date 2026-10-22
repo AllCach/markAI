@@ -11,7 +11,7 @@ public final class NetworkRules {
     // Ctrl modifies only commands that make sense for multiple living companions.
     private static final Set<String> GROUP_ACTIONS = Set.of(
         "attack", "collect", "stop", "come", "stay", "follow",
-        "rest", "wander", "home", "investigate");
+        "rest", "wander", "home", "sethome", "investigate");
 
     private static final Set<String> TRAITS = Set.of("trait_loyalty", "trait_curiosity", "trait_caution", "trait_playfulness",
         "trait_sociability", "trait_independence", "trait_confidence", "trait_trust");
