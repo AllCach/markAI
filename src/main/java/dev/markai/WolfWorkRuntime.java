@@ -31,9 +31,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 
 /** Bounded server-thread jobs. Native navigation and melee perform every movement and bite. */
 final class WolfWorkRuntime {
+    private final BiConsumer<MarkAIMod.Companion, Long> completionReward;
+
+    WolfWorkRuntime() { this((companion, gameTime) -> { }); }
+
+    WolfWorkRuntime(BiConsumer<MarkAIMod.Companion, Long> completionReward) {
+        this.completionReward = java.util.Objects.requireNonNull(completionReward);
+    }
     private enum Kind { ATTACK, COLLECT }
     private static final class Job {
         Kind kind;
@@ -261,6 +269,7 @@ final class WolfWorkRuntime {
         Job job = jobs.get(wolf.getUUID());
         boolean reportResult = job == null || job.reportResult;
         cancel(companion, wolf); companion.living.lastAction = result;
+        if (job != null && result.success()) completionReward.accept(companion, job.level.getGameTime());
         ServerPlayer owner = ((ServerLevel) wolf.level()).getServer().getPlayerList().getPlayer(companion.owner);
         if (owner != null && reportResult) {
             owner.sendSystemMessage(Component.literal("<" + companion.living.name + "> " + result.message()));
