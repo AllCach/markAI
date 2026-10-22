@@ -1361,8 +1361,10 @@ public final class MarkAIMod implements ModInitializer {
         if (CompanionSpecies.CHICKEN.id().equals(c.species)) {
             Chicken chicken = findChicken(c);
             if (chicken != null) chickenRuntime.stop(chicken);
+            c.following = false;
+            c.dismissed = false;
             c.requestedAction = null;
-            c.action = c.following ? "FOLLOW" : "STAY";
+            c.action = "STAY";
             AISession chickenSession = aiSessions.get(c.id);
             if (chickenSession != null) { invalidate(chickenSession); chickenSession.error = ""; }
             return;
