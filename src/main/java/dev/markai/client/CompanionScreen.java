@@ -360,9 +360,9 @@ public final class CompanionScreen extends Screen {
         }
         int previewWidth = panelWidth < 400 ? 80 : 130;
         graphics.fill(left + 10, contentTop, left + 10 + previewWidth, bottom, 0x8834493D);
-        var wolf = MarkAIClient.preview();
-        if (wolf != null) InventoryScreen.extractEntityInInventoryFollowsMouse(graphics, left + 12, contentTop,
-            left + previewWidth + 8, bottom, Math.max(20, Math.min(44, (bottom - contentTop) / 2)), 0.0F, mouseX, mouseY, wolf);
+        var entity = MarkAIClient.preview();
+        if (entity != null) InventoryScreen.extractEntityInInventoryFollowsMouse(graphics, left + 12, contentTop,
+            left + previewWidth + 8, bottom, Math.max(20, Math.min(44, (bottom - contentTop) / 2)), 0.0F, mouseX, mouseY, entity);
         else graphics.text(font, tr("markai.ui.not_loaded"), left + 13, contentTop + 15, MUTED);
         int x = left + previewWidth + 20;
         drawProfileDetails(graphics, x, contentTop + 3, panelWidth - previewWidth - 32, bottom - contentTop - 6);
@@ -393,12 +393,12 @@ public final class CompanionScreen extends Screen {
         String name = ClientCompanionState.string(companion, "name", "—");
         String activity = ClientCompanionState.string(companion, "activity", "UNLOADED");
         graphics.text(font, font.plainSubstrByWidth(name, w - 12), x + 6, y + 7, selected ? ACCENT : WHITE);
-        var wolf = MarkAIClient.preview(ClientCompanionState.string(companion, "entity_uuid", ""));
-        if (wolf != null) {
+        var entity = MarkAIClient.preview(ClientCompanionState.string(companion, "entity_uuid", ""));
+        if (entity != null) {
             int size = selected ? Math.max(24, Math.min(54, (h - 52) / 2))
                 : Math.max(16, Math.min(27, (h - 52) / 3));
             InventoryScreen.extractEntityInInventoryFollowsMouse(graphics, x + 3, y + 20,
-                x + w - 3, y + h - 52, size, 0.0F, mouseX, mouseY, wolf);
+                x + w - 3, y + h - 52, size, 0.0F, mouseX, mouseY, entity);
         } else {
             graphics.text(font, font.plainSubstrByWidth(label("markai.ui.not_loaded"), w - 12),
                 x + 6, y + Math.max(24, (h - 48) / 2), MUTED);
