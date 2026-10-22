@@ -168,5 +168,13 @@
     "markai.hub.hint.group_enabled": "Enable this panel shared chat. Actual-name addressing works only here. Private conversations always address the selected companion.",
     "markai.hub.hint.mutual_replies": "Companions may ask each other questions by their actual names. At most 10 companion messages total after your message; they can stop earlier.",
     "markai.species.wolf": "Wolf",
-    "markai.species.chicken": "Chicken"
+    "markai.species.chicken": "Chicken",
+    "markai.ui.xp": "Experience",
+    "markai.ui.points": "Talent points",
+    "markai.talent.guardian": "Guardian",
+    "markai.talent.hunter": "Hunter",
+    "markai.talent.tracker": "Tracker",
+    "markai.talent.nimble": "Nimble",
+    "markai.talent.lookout": "Lookout",
+    "markai.talent.evasive": "Evasion"
 }
