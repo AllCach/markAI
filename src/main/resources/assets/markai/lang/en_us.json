@@ -122,6 +122,7 @@
     "markai.hub.open_short":  "All",
     "markai.hub.tab.companions":  "Companions",
     "markai.hub.tab.group_commands":  "Group orders",
+    "markai.hub.tab.group_short":  "Group",
     "markai.hub.group_commands_hint":  "Orders go to all compatible companions. Unsupported orders will be skipped.",
     "markai.hub.group_commands_scroll":  "Mouse wheel: more orders",
     "markai.hub.group_command_hint":  "Order applies to the whole group; orders unsupported by a species are skipped.",
