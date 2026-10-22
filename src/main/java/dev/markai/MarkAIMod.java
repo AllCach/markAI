@@ -13,6 +13,7 @@ import dev.markai.ai.AmbientConversation;
 import dev.markai.actions.*;
 import dev.markai.core.*;
 import dev.markai.companion.CompanionRegistry;
+import dev.markai.companion.CompanionProgression;
 import dev.markai.companion.CompanionStore;
 import dev.markai.companion.GroupChatState;
 import dev.markai.companion.GroupDialogueRound;
@@ -99,7 +100,7 @@ public final class MarkAIMod implements ModInitializer {
     private ChatJournal chatJournal;
     private final Map<UUID, AISession> aiSessions = new HashMap<>();
     private final LivingCompanionRuntime livingRuntime = new LivingCompanionRuntime(this::memoryEnabled);
-    private final WolfWorkRuntime wolfWork = new WolfWorkRuntime();
+    private final WolfWorkRuntime wolfWork = new WolfWorkRuntime(this::onWorkCompleted);
     private final ChickenCompanionRuntime chickenRuntime = new ChickenCompanionRuntime();
     private final Map<UUID, Integer> memoryPages = new HashMap<>();
     private final Map<UUID, Long> ownerAutomaticAt = new HashMap<>();
@@ -143,6 +144,7 @@ public final class MarkAIMod implements ModInitializer {
         LivingState living = new LivingState();
         CompanionMemory memory = new CompanionMemory();
         DogTraining training = new DogTraining();
+        CompanionProgression progression = new CompanionProgression();
         String lastObservedPlace;
         transient long nextMessage;
         transient long nextFallbackVocalAt;
@@ -243,6 +245,8 @@ public final class MarkAIMod implements ModInitializer {
                         }
                         if (c.memory == null) c.memory = new CompanionMemory();
                         if (c.training == null) c.training = new DogTraining();
+                        if (c.progression == null) c.progression = new CompanionProgression();
+                        c.progression.normalize(c.species);
                         if (c.living == null) c.living = new LivingState();
                         if (c.id == null) c.id = c.entity;
                         if (restored.contains(c.id)) throw new IOException("Duplicate companion identity");
@@ -303,6 +307,7 @@ public final class MarkAIMod implements ModInitializer {
             }
             if (entity instanceof Enemy) for (Companion c : companions.values()) {
                 if (source.getEntity() != null && c.entity.equals(source.getEntity().getUUID())) {
+                    awardTaskXp(c, entity.level().getGameTime(), 12);
                     Wolf witness = find(c);
                     if (witness != null) livingRuntime.event(c, witness, WorldEvent.Type.COMBAT_WON,
                         "Я победил противника: " + entity.getType().getDescription().getString() + ".", 1);
@@ -319,7 +324,7 @@ public final class MarkAIMod implements ModInitializer {
         });
         ServerTickEvents.END_SERVER_TICK.register(s -> {
             if (++ticks % 10 != 0) return;
-            for (Companion c : companions.values()) tick(c);
+            for (Companion c : companions.values()) { tick(c); progressionTick(c); }
             if (ticks % 200 == 0) {
                 save();
                 if (aiConfig != null && aiConfig.debugMode) LOG.info("Companion perception metrics: {}", CHAT_JSON.toJson(livingRuntime.observer.metrics()));
@@ -416,6 +421,7 @@ public final class MarkAIMod implements ModInitializer {
             return 0;
         }
         Companion c = companions.selected(owner.getUUID());
+        if (command.startsWith("talent_")) return spendTalent(owner, command.substring(7)) ? 1 : 0;
         if (command.equals("tame")) {
             LivingEntity lookedAt = pointedLiving(owner, 8);
             if (!(lookedAt instanceof Wolf wolf)) {
@@ -491,7 +497,7 @@ public final class MarkAIMod implements ModInitializer {
             c.id = previousCompanion == null ? UUID.randomUUID() : previousCompanion.id == null ? previousCompanion.entity : previousCompanion.id;
             c.living = previousCompanion == null ? LivingState.forIdentity(c.id) : previousCompanion.living;
             if (previousCompanion == null && ownedCount > 0) c.living.name = wolfName;
-            if (previousCompanion != null) { c.memory = previousCompanion.memory; c.training = previousCompanion.training; }
+            if (previousCompanion != null) { c.memory = previousCompanion.memory; c.training = previousCompanion.training; c.progression = previousCompanion.progression; }
             if (previousCompanion == null && aiConfig != null) {
                 c.living.settings.followDistance = aiConfig.followDistance;
                 c.living.settings.defense = aiConfig.defensiveBehavior;
@@ -904,6 +910,7 @@ public final class MarkAIMod implements ModInitializer {
             c.training = previous.training;
             c.following = previous.following;
             c.dismissed = previous.dismissed;
+            c.progression = previous.progression;
         }
         c.memory.bind(c.id);
         chicken.setCustomName(Component.literal(c.living.name));
@@ -955,7 +962,8 @@ public final class MarkAIMod implements ModInitializer {
     private void configure(Companion c, Wolf wolf) {
         if (c.id == null) c.id = c.entity;
         c.memory.bind(c.id);
-        wolf.getAttribute(Attributes.FOLLOW_RANGE).setBaseValue(CompanionCombatRules.combatRadius());
+        applyProgression(c);
+        wolf.getAttribute(Attributes.FOLLOW_RANGE).setBaseValue(CompanionCombatRules.combatRadius() + c.progression.trackerRank * 4.0);
         if (configured.add(wolf.getUUID())) {
             ((CompanionInventoryHolder) wolf).markai$setCompanion(true);
             if (!wolf.isTame()) wolf.setTame(true, true);
@@ -1030,10 +1038,13 @@ public final class MarkAIMod implements ModInitializer {
             c.action = "IDLE";
             return;
         }
+        chicken.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.25 + c.progression.nimbleRank * 0.025);
         if (!c.following || c.dismissed) {
             chickenRuntime.stop(chicken);
             c.action = "IDLE";
-        } else if (chicken.distanceToSqr(owner) > 9.0) {
+        } else if (c.progression.evasiveRank > 0 && chickenRuntime.evade(chicken, c.progression.evasiveRank)) {
+            c.action = "FLEE";
+        } else if (chicken.distanceToSqr(owner) > Math.pow(3.0 + c.progression.lookoutRank, 2)) {
             chickenRuntime.follow(chicken, owner);
             c.action = "FOLLOW";
         } else {
@@ -1067,6 +1078,83 @@ public final class MarkAIMod implements ModInitializer {
         scene.add(event == null ? "none" : event.type().name() + ":" + event.gameTime());
         scene.add((int) chicken.distanceTo(owner));
         return CHAT_JSON.toJson(scene);
+    }
+
+    private void progressionTick(Companion c) {
+        if (c.dead || server == null) return;
+        ServerPlayer owner = server.getPlayerList().getPlayer(c.owner);
+        LivingEntity entity = CompanionSpecies.CHICKEN.id().equals(c.species) ? findChicken(c) : find(c);
+        if (owner == null || !owner.isAlive() || entity == null || entity.level() != owner.level()
+                || entity.distanceToSqr(owner) > 32 * 32 || c.dismissed) {
+            c.progression.resetTravelSample();
+            return;
+        }
+        CompanionProgression p = c.progression;
+        long before = p.totalXp;
+        long gained = 0;
+        if (c.following && entity.distanceToSqr(owner) <= 24 * 24) {
+            gained += p.sampleTravel(owner.getX(), owner.getZ(), owner.level().dimension().identifier().toString());
+            String biome = owner.level().getBiome(owner.blockPosition()).unwrapKey()
+                .map(key -> key.identifier().toString()).orElse("");
+            gained += p.discoverBiome(biome);
+        } else p.resetTravelSample();
+        if (gained > 0) {
+            int oldLevel = levelForXp(before);
+            if (p.level() > oldLevel) owner.sendSystemMessage(Component.literal(c.living.name + " достиг уровня " + p.level()
+                + "! Очки талантов: " + p.unspentPoints() + "."));
+            save();
+        }
+    }
+
+    private static int levelForXp(long xp) {
+        CompanionProgression p = new CompanionProgression();
+        p.totalXp = xp;
+        return p.level();
+    }
+
+    private void onWorkCompleted(Companion c, long gameTime) {
+        awardTaskXp(c, gameTime, 8);
+    }
+
+    private void awardTaskXp(Companion c, long gameTime, long amount) {
+        if (c == null || c.progression == null) return;
+        int before = c.progression.level();
+        if (c.progression.rewardCompletedTask(gameTime, amount) <= 0) return;
+        if (server != null) {
+            ServerPlayer owner = server.getPlayerList().getPlayer(c.owner);
+            if (owner != null && c.progression.level() > before)
+                owner.sendSystemMessage(Component.literal(c.living.name + " достиг уровня " + c.progression.level()
+                    + "! Очки талантов: " + c.progression.unspentPoints() + "."));
+        }
+        save();
+    }
+
+    private boolean spendTalent(ServerPlayer owner, String talent) {
+        Companion c = companions.selected(owner.getUUID());
+        if (!storageHealthy || c == null || c.dead || !NetworkRules.talent(talent)
+                || !c.progression.supportsTalent(c.species, talent)) {
+            CompanionNetwork.notice(owner, "error", "Этот талант недоступен выбранному компаньону.");
+            return false;
+        }
+        if (!c.progression.spendTalent(c.species, talent)) {
+            CompanionNetwork.notice(owner, "error", "Нужны свободное очко таланта и достаточный уровень.");
+            return false;
+        }
+        applyProgression(c);
+        save();
+        CompanionNetwork.notice(owner, "status", c.living.name + ": " + talent + " " + c.progression.rank(talent) + "/3");
+        return true;
+    }
+
+    private void applyProgression(Companion c) {
+        c.progression.normalize(c.species);
+        if (CompanionSpecies.CHICKEN.id().equals(c.species)) return;
+        Wolf wolf = find(c);
+        if (wolf == null) return;
+        wolf.getAttribute(Attributes.MAX_HEALTH).setBaseValue(40.0 + c.progression.guardianRank * 4.0);
+        wolf.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(4.0 + c.progression.hunterRank * 1.0);
+        wolf.getAttribute(Attributes.FOLLOW_RANGE).setBaseValue(CompanionCombatRules.combatRadius() + c.progression.trackerRank * 4.0);
+        wolf.setHealth(Math.min(wolf.getHealth(), wolf.getMaxHealth()));
     }
 
     private void tick(Companion c) {
@@ -1151,6 +1239,7 @@ public final class MarkAIMod implements ModInitializer {
             owner.sendSystemMessage(Component.literal("Возьмите в основную руку мясное лакомство, например жареную говядину.")); return 0;
         }
         c.training.train(trick);
+        awardTaskXp(c, wolf.level().getGameTime(), 4);
         if (!owner.getAbilities().instabuild) treat.shrink(1);
         c.nextLessonAt = now + 40;
         wolf.getLookControl().setLookAt(owner, 30, 30);
@@ -1223,6 +1312,7 @@ public final class MarkAIMod implements ModInitializer {
 
     private void completeTrick(Companion c, Wolf wolf, Trick trick) {
         c.training.completed(wolf.level().getGameTime());
+        awardTaskXp(c, wolf.level().getGameTime(), 8);
         if (memoryEnabled()) c.memory.rememberEvent("trick:" + trick, "Я выполнил команду хозяина «" + trick.title + "».", wolf.level().getGameTime());
         c.trick = null;
         wolf.getNavigation().stop();
@@ -1843,7 +1933,8 @@ public final class MarkAIMod implements ModInitializer {
         data.put("companion_id", c.id == null ? c.entity.toString() : c.id.toString());
         data.put("health", entity == null ? 0 : entity.getHealth()); data.put("max_health", entity == null ? 0 : entity.getMaxHealth());
         data.put("activity", c.dead ? "DEAD" : entity == null ? "UNLOADED" : c.action);
-        data.put("mood", c.living.emotions.mood.name()); data.put("trust", c.living.emotions.trust); data.put("level", c.training.level());
+        data.put("mood", c.living.emotions.mood.name()); data.put("trust", c.living.emotions.trust); data.put("level", c.progression.level());
+        data.put("progression", Map.of("xp", c.progression.totalXp, "xp_into_level", c.progression.xpIntoLevel(), "xp_required", c.progression.xpRequiredForLevel(), "xp_next", c.progression.xpToNextLevel(), "points", c.progression.unspentPoints(), "earned_points", c.progression.earnedPoints(), "talents", c.progression.talentSnapshot(c.species)));
         data.put("ai_status", ollama == null ? "Недоступен" : session != null && !session.enabled ? "Выключен" : session != null && session.pending != null && !session.pendingAutomatic ? "Думает…" : "Готов");
         boolean anotherRequestPending = aiSessions.entrySet().stream().anyMatch(entry -> !entry.getKey().equals(c.id) && entry.getValue().pending != null);
         data.put("can_chat", groupRuns.isEmpty() && !anotherRequestPending && (session == null || session.pendingAutomatic || session.pending == null && System.currentTimeMillis() >= session.nextRequest));

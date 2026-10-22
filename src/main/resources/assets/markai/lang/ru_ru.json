@@ -168,5 +168,21 @@
     "markai.hub.hint.group_enabled": "Включить общий чат этой панели. Только здесь действуют обращения к питомцам по именам. Личный диалог всегда относится к выбранному питомцу.",
     "markai.hub.hint.mutual_replies": "Питомцы могут задать друг другу вопрос по настоящему имени и продолжить беседу. Не более 10 реплик питомцев всего после твоего сообщения; могут закончить раньше.",
     "markai.species.wolf": "Волк",
-    "markai.species.chicken": "Курица"
+    "markai.species.chicken": "Курица",
+    "markai.ui.xp": "Опыт",
+    "markai.ui.points": "Очки талантов",
+    "markai.talent.guardian": "Страж",
+    "markai.talent.hunter": "Охотник",
+    "markai.talent.tracker": "Следопыт",
+    "markai.talent.nimble": "Проворность",
+    "markai.talent.lookout": "Дозорный",
+    "markai.talent.evasive": "Уклонение",
+    "markai.ui.max_level": "МАКСИМУМ",
+    "markai.ui.xp_remaining": "до следующего уровня",
+    "markai.talent.guardian.desc": "Увеличивает максимальное здоровье.",
+    "markai.talent.hunter.desc": "Увеличивает урон атаки.",
+    "markai.talent.tracker.desc": "Увеличивает дистанцию следования.",
+    "markai.talent.nimble.desc": "Увеличивает скорость передвижения курицы.",
+    "markai.talent.lookout.desc": "Увеличивает дистанцию следования курицы.",
+    "markai.talent.evasive.desc": "Курица убегает от ближайших монстров."
 }

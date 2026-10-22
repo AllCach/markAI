@@ -1,0 +1,30 @@
+name: MarkAI verification
+
+on:
+  pull_request:
+    branches: [dev-beta]
+  push:
+    branches: [dev-beta]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+      - name: Run unit and deterministic checks
+        run: ./gradlew check
+      - name: Verify production JAR
+        run: ./gradlew productionJarSmokeTest
