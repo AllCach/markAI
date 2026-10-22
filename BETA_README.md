@@ -1,38 +1,29 @@
-# MarkAI 0.10.4 beta
+# MarkAI 0.11.1 - internal draft build, not released
 
-Говорящие волки-компаньоны: характер, память, обучение, бой, сбор предметов и сумка. До восьми питомцев на игрока. Общий чат учитывает имена и контекст; если ИИ выключен или модель недоступна, обращённый питомец отвечает обычным волчьим звуком не чаще раза в три секунды.
+> This file is a build-package notice for `dev-draft`, not a public beta release. No GitHub pre-release has been created. The current source contains unverified progression and pathing changes; do not distribute this build or install it over the only copy of a world until the current build and game tests pass.
 
-## Установка
+MarkAI is a Fabric mod for Minecraft Java 26.3 with multiple species-aware companions. The source version in `gradle.properties` is 0.11.1; that version string does not mean this draft has passed release acceptance.
 
-1. Нужны **Minecraft Java 26.3**, **Java 25**, **Fabric Loader 0.19.5 или новее** и **Fabric API для 26.3**. Другие версии Minecraft не проверялись.
-2. Закройте игру. На копии мира проверьте обновление; сохраните прежний JAR, настройки и мир целиком. Положите `markai-0.10.4.jar` и подходящий Fabric API в `mods` нужного профиля. Оставьте один активный JAR MarkAI.
-3. Для разговоров установите [Ollama](https://ollama.com/download). Откройте терминал и выполните `ollama pull qwen3:8b`. Для штатной установки Ollama хранит модели в своём обычном каталоге. В Windows можно запустить приложенный `start-ollama.ps1 -Pull`; скрипт поддерживает установленную Ollama и переносимую копию `.tools/ollama/ollama.exe`. Модель, Ollama, Fabric API и Minecraft в архив не входят.
-4. Запустите Ollama, затем Minecraft. Файл `config/markai.json` появится автоматически. По умолчанию используется `http://127.0.0.1:11434`, модель `qwen3:8b`. Обычное поведение, бой и сбор работают без модели.
-5. Приручите волка костями. Своего уже приручённого волка можно принять через `/walk tame`, глядя на него в пределах восьми блоков. `/mark spawn` создаёт дополнительного компаньона.
+## Companion interaction
 
-В сетевой игре мод нужен на сервере и клиентах. Настройки ИИ и Ollama относятся к машине **сервера**. Локальный адрес в серверном конфиге означает сам сервер.
+- **Wolf / Walk:** tame a wild wolf with bones under normal Minecraft rules. It is registered after successful vanilla taming. Existing custom names and existing saved identities are preserved.
+- **Chicken / Mark:** crouch (Shift), hold seeds and right-click an existing wild chicken. MarkAI adopts that same entity. Ordinary seed feeding without Shift remains vanilla behavior. There is no command or GUI button to spawn a companion chicken.
+- **Commands:** `/mark` is the canonical command. `/walk` remains a backward-compatible alias for existing scripts and player muscle memory.
+- **Species boundary:** wolf-only combat, inventory, collection and trick training are not available to the chicken.
 
-## Управление
+## Current draft limitations
 
-| Клавиша / действие | Результат |
-| --- | --- |
-| U | Общая панель: питомцы, общий чат и общие настройки |
-| G / H / V | Личный профиль / личный диалог / быстрые команды |
-| Shift + V | Выбрать следующего питомца |
-| Shift + ПКМ по своему питомцу | Сумка на девять слотов |
-| Ctrl + поддерживаемая команда | Применить приказ ко всем своим питомцам рядом |
-| `/walk attack` / `/walk collect` / `/walk stop` | Атаковать цель под прицелом / собрать добычу / остановить задание |
-| `/ma <сообщение>` / `/mo <сообщение>` | Начать общий / личный разговор; ответы отображаются в чате Minecraft |
-| `/mo <имя питомца> <сообщение>` | Адресовать личное сообщение питомцу по имени |
+The companion progression model has levels 1-20, XP and talent points, but chicken talent effects and the final balance pass are unfinished. The item collection path has a regression test for a resource on a surface one block higher, but that test has not been run since the latest code changes.
 
-Клавиши можно переназначить в управлении Minecraft. Боевой радиус по умолчанию — 32 блока и настраивается в `config/markai.json` полем `combatRadius` (8–64). Команда сбора работает с лежащими предметами в радиусе 16 блоков от точки начала; волк складывает их в сумку. Блоки не добывает. Обращения по настоящим именам запускают ответы только во вкладке общего чата или через `/mo <имя> <сообщение>`.
+## Validation required before release
 
-## Данные и ограничения беты
+Use JDK 25 and the current Gradle wrapper:
 
-Память, выбор и настройки сохраняются в мировом `markai.json`; сумки — вместе с сущностями волков. До обновления старого формата создаётся точная копия JSON. Возврат старого JSON сам по себе не восстанавливает весь мир: для отката используйте полную резервную копию.
+```powershell
+.\gradlew.bat clean check build --console=plain
+.\gradlew.bat runGameTest --console=plain
+.\gradlew.bat runClientGameTest --console=plain
+.\gradlew.bat productionJarSmokeTest verifyBetaDist --console=plain
+```
 
-Личные диалоги дополнительно записываются в `logs/markai-chat.jsonl`. Удалённый ИИ требует явной настройки; ключ задаётся через переменную окружения. Подробности — [CONFIGURATION.md](CONFIGURATION.md).
-
-Модель может ошибаться и повторяться. Запросы выполняются последовательно; другой игрок ждёт освобождения ИИ. Микрофона и озвучивания нет. Текущие проверки и ручные сценарии — [BETA_TESTING.md](BETA_TESTING.md), изменения — [CHANGELOG.md](CHANGELOG.md).
-
-Ошибки: [GitHub Issues](https://github.com/AllCach/markAI/issues). Приложите версию, шаги воспроизведения и результат `/mark ai status`; перед отправкой логов удалите личную переписку и ключи.
+Also check the actual client, natural taming of both species, default names regardless of the order of taming, elevated item collection, saves/reloads and death/respawn on a copy of a world. Treat any test that did not run on the current HEAD as unverified.
