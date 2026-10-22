@@ -93,7 +93,7 @@ public final class CompanionProgression {
     public long addExperience(long amount) {
         if (amount <= 0 || totalXp >= MAX_TOTAL_XP) return 0;
         long before = Math.max(0, Math.min(MAX_TOTAL_XP, totalXp));
-        long after = Math.min(MAX_TOTAL_XP, before + amount);
+        long after = amount >= MAX_TOTAL_XP - before ? MAX_TOTAL_XP : before + amount;
         totalXp = after;
         return after - before;
     }
