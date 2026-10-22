@@ -29,7 +29,7 @@ public final class CompanionScreen extends Screen {
     private final boolean quick;
     private Tab tab;
     private int left, top, panelWidth, panelHeight, contentTop, contentBottom;
-    private int conversationScroll, memoryOffset, detailScroll, profileScroll;
+    private int conversationScroll, memoryOffset, detailScroll, profileScroll, journalOffset, journalNoteOffset;
     private String selectedMemory = "", draft = "", renameDraft;
     private String companionId = MarkAIClient.STATE.companionId(), requestedCompanion = "";
     private long selectionRequestedAt;
@@ -287,13 +287,15 @@ public final class CompanionScreen extends Screen {
         int listWidth = Math.max(82, Math.min(150, (panelWidth - 30) / 3));
         int visible = Math.max(1, Math.min(6, (contentBottom - contentTop - 6) / 23));
         List<JsonObject> entries = journalEntries();
+        journalOffset = Math.max(0, Math.min(journalOffset, Math.max(0, entries.size() - visible)));
         if (selectedSpeciesId.isBlank() && !entries.isEmpty())
             selectedSpeciesId = ClientCompanionState.string(entries.get(0), "species_id", "");
-        for (int i = 0; i < Math.min(visible, entries.size()); i++) {
-            JsonObject entry = entries.get(i);
+        if (!selectedSpeciesId.isBlank() && selectedJournalEntry() == null) selectedSpeciesId = "";
+        for (int i = 0; i < Math.min(visible, entries.size() - journalOffset); i++) {
+            JsonObject entry = entries.get(journalOffset + i);
             String speciesId = ClientCompanionState.string(entry, "species_id", "");
             Button button = addButton("", left + 10, contentTop + i * 23, listWidth, () -> {
-                selectedSpeciesId = speciesId; selectedJournalNoteId = ""; detailScroll = 0; journalDraft = "";
+                selectedSpeciesId = speciesId; selectedJournalNoteId = ""; detailScroll = 0; journalNoteOffset = 0; journalDraft = "";
                 clearWidgets(); init();
             });
             journalSpeciesButtons.add(button);
@@ -303,8 +305,9 @@ public final class CompanionScreen extends Screen {
         int noteX = left + listWidth + 18;
         int noteWidth = Math.max(70, left + panelWidth - 12 - noteX);
         int noteVisible = Math.max(1, Math.min(4, (contentBottom - contentTop - 92) / 22));
-        for (int i = 0; i < Math.min(noteVisible, notes.size()); i++) {
-            JsonObject note = notes.get(i);
+        journalNoteOffset = Math.max(0, Math.min(journalNoteOffset, Math.max(0, notes.size() - noteVisible)));
+        for (int i = 0; i < Math.min(noteVisible, notes.size() - journalNoteOffset); i++) {
+            JsonObject note = notes.get(journalNoteOffset + i);
             String noteId = ClientCompanionState.string(note, "id", "");
             Button button = addButton("", noteX, contentTop + 92 + i * 22, noteWidth, () -> {
                 selectedJournalNoteId = noteId; updateLabels();
@@ -387,8 +390,9 @@ public final class CompanionScreen extends Screen {
         List<JsonObject> journal = journalEntries();
         for (int i = 0; i < journalSpeciesButtons.size(); i++) {
             Button button = journalSpeciesButtons.get(i);
-            if (i >= journal.size()) { button.active = false; button.setMessage(Component.literal("—")); continue; }
-            JsonObject entry = journal.get(i);
+            int index = journalOffset + i;
+            if (index >= journal.size()) { button.active = false; button.setMessage(Component.literal("—")); continue; }
+            JsonObject entry = journal.get(index);
             String id = ClientCompanionState.string(entry, "species_id", "");
             String stage = ClientCompanionState.string(entry, "stage", "OBSERVED");
             String text = id.substring(id.indexOf(':') + 1) + " (" + ClientCompanionState.number(entry, "observations", 0) + ")";
@@ -399,8 +403,9 @@ public final class CompanionScreen extends Screen {
         List<JsonObject> notes = selectedJournalNotes();
         for (int i = 0; i < journalNoteButtons.size(); i++) {
             Button button = journalNoteButtons.get(i);
-            if (i >= notes.size()) { button.active = false; button.setMessage(Component.literal("—")); continue; }
-            JsonObject note = notes.get(i);
+            int index = journalNoteOffset + i;
+            if (index >= notes.size()) { button.active = false; button.setMessage(Component.literal("—")); continue; }
+            JsonObject note = notes.get(index);
             String id = ClientCompanionState.string(note, "id", "");
             String text = ClientCompanionState.string(note, "text", "");
             if (id.equals(selectedJournalNoteId)) text = "› " + text;
@@ -448,7 +453,14 @@ public final class CompanionScreen extends Screen {
             int delta = (int) Math.signum(vertical) * 3;
             switch (tab) {
                 case DIALOGUE -> conversationScroll = Math.max(0, conversationScroll + delta);
-                case JOURNAL -> detailScroll = Math.max(0, detailScroll - delta);
+                case JOURNAL -> {
+                    int listWidth = Math.max(82, Math.min(150, (panelWidth - 30) / 3));
+                    if (x < left + 10 + listWidth + 5) journalOffset = Math.max(0,
+                        Math.min(Math.max(0, journalEntries().size() - journalSpeciesButtons.size()), journalOffset - delta));
+                    else if (y >= contentTop + 80) journalNoteOffset = Math.max(0,
+                        Math.min(Math.max(0, selectedJournalNotes().size() - journalNoteButtons.size()), journalNoteOffset - delta));
+                    else detailScroll = Math.max(0, detailScroll - delta);
+                }
                 case MEMORIES -> {
                     if (x > left + (panelWidth - 28) * 2 / 5 + 20) detailScroll = Math.max(0, detailScroll - delta);
                     else memoryOffset = Math.max(0, memoryOffset - delta);
