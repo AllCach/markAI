@@ -184,5 +184,20 @@
     "markai.talent.tracker.desc": "Увеличивает дистанцию следования.",
     "markai.talent.nimble.desc": "Увеличивает скорость передвижения курицы.",
     "markai.talent.lookout.desc": "Увеличивает дистанцию следования курицы.",
-    "markai.talent.evasive.desc": "Курица убегает от ближайших монстров."
+    "markai.talent.evasive.desc": "Курица убегает от ближайших монстров.",
+    "markai.journal.minecraft.wolf.overview": "Дикий стайный моб, который после приручения может стать верным компаньоном.",
+    "markai.journal.minecraft.wolf.behavior": "Волки охотятся на овец, кроликов и скелетов; приручённый волк защищает хозяина при угрозе.",
+    "markai.journal.minecraft.wolf.habitat": "Волки встречаются в лесах, тайге и других холодных или лесистых биомах.",
+    "markai.journal.minecraft.wolf.threats": "Дикие волки могут нападать на овец и кроликов; враждебные мобы опасны для одинокого волка.",
+    "markai.journal.minecraft.wolf.taming": "Корми дикого волка костями до появления сердечек. Приручённого волка можно лечить подходящим мясом.",
+    "markai.journal.minecraft.chicken.overview": "Небольшое сельскохозяйственное животное, которое бродит по миру и периодически несёт яйца.",
+    "markai.journal.minecraft.chicken.behavior": "Куры ходят за семенами; при гибели могут выпадать перья или сырая курятина.",
+    "markai.journal.minecraft.chicken.habitat": "Куры обычно появляются в травянистых биомах, где могут спавниться животные.",
+    "markai.journal.minecraft.chicken.threats": "Куры уязвимы перед враждебными мобами и падением с высоты.",
+    "markai.journal.minecraft.chicken.taming": "Семена позволяют разводить кур. В ванильном Minecraft кур нельзя приручить.",
+    "markai.journal.minecraft.zombie.overview": "Враждебный нежить, атакующий ближайших игроков и жителей.",
+    "markai.journal.minecraft.zombie.behavior": "Зомби преследуют цели, горят под прямыми солнечными лучами и могут привлекать соседних зомби.",
+    "markai.journal.minecraft.zombie.habitat": "Зомби часто появляются в темноте и под землёй; также могут появляться во время рейдов и событий.",
+    "markai.journal.minecraft.zombie.threats": "Зомби наносят урон в ближнем бою и опасны группами; обычные зомби горят на солнце.",
+    "markai.journal.minecraft.zombie.taming": "В ванильном выживании зомби нельзя приручить. Используй освещение, дистанцию или защитные преграды."
 }
