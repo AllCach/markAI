@@ -1,6 +1,6 @@
 # Companion species boundary — 0.11.1
 
-This document describes the multi-species implementation carried into 0.11.1 from the 0.11.0 integration branch. The code has been written through GitHub file operations; a local Gradle build and in-game validation have not yet been run.
+This document describes the species boundary in `dev-draft` (project source version 0.11.1). The latest refactor and item-navigation regression have not been built or validated in-game yet.
 
 ## Current implementation
 
@@ -9,7 +9,7 @@ This document describes the multi-species implementation carried into 0.11.1 fro
 - Missing/blank species on older records defaults to `minecraft:wolf`; unknown species are rejected during load validation.
 - `CompanionSpecies` defines explicit capabilities for Wolf and Chicken.
 - The existing Wolf path retains its combat, inventory, training and trick behavior.
-- Chicken/Mark has a separate minimal runtime: spawn, follow/stay/summon/cancel/remove, species-aware status, selected-companion handling, chat context and ambient dialogue.
+- Chicken/Mark has a separate runtime: it adopts the existing chicken through Shift + right-click with seeds, supports the chicken-specific movement commands and species-aware status, selected-companion handling, chat context and ambient dialogue. No player command or GUI button spawns a chicken companion.
 - Chicken does not inherit Wolf combat, inventory or wolf tricks. The personal UI must hide wolf-only controls for Chicken, and server actions must not create a Wolf when `spawn` is invoked with a live Chicken selected.
 - Ambient Chicken dialogue uses a separate context and does not replay player chat history.
 - Ordinary wild chickens are not registered as MarkAI companions unless explicitly spawned/registered through the companion flow.
