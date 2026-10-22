@@ -202,7 +202,7 @@ public final class CompanionScreen extends Screen {
         if (!NetworkRules.companionId(state().companionId())) return;
         String[] actions = isChickenSelected()
             ? new String[] {"follow", "come", "stay", "rest", "stop", "summon", "dismiss"}
-            : new String[] {"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory", "attack", "collect", "stop"};
+            : new String[] {"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory", "attack", "collect", "stop", "guardian", "hunter", "tracker"};
         int availableHeight = contentBottom - contentTop;
         int maxRows = Math.max(1, (availableHeight + 3) / 23);
         int columns = Math.max(panelWidth >= 550 ? 4 : 2, (actions.length + maxRows - 1) / maxRows);
@@ -211,9 +211,10 @@ public final class CompanionScreen extends Screen {
         int gapY = rows == 1 ? 0 : Math.min(32, (availableHeight - 20) / (rows - 1));
         for (int i = 0; i < actions.length; i++) {
             String action = actions[i];
-            Button button = addButton(label("markai.command." + action),
+            String buttonKey = List.of("guardian", "hunter", "tracker", "nimble", "lookout", "evasive").contains(action) ? "markai.talent." + action : "markai.command." + action;
+            Button button = addButton(label(buttonKey),
                 left + 10 + (i % columns) * (w + 3), contentTop + (i / columns) * gapY,
-                w, () -> command(action));
+                w, () -> command(action.startsWith("guardian") || action.equals("hunter") || action.equals("tracker") || action.equals("nimble") || action.equals("lookout") || action.equals("evasive") ? "talent_" + action : action));
             if (NetworkRules.groupAction(action)) button.setTooltip(Tooltip.create(tr("markai.command.hint.group_modifier")));
         }
     }
