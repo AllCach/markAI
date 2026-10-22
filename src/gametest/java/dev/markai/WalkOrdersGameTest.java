@@ -197,6 +197,39 @@ public final class WalkOrdersGameTest {
             .thenSucceed();
     }
 
+    @GameTest(structure = "markai-test:arena", maxTicks = 450)
+    public void gatheringCollectsAResourceOneBlockAboveTheWolfsStartingLevel(GameTestHelper helper) throws Exception {
+        setup(helper);
+        ServerPlayer owner = owner(helper);
+        command(owner, "spawn");
+        var c = companion(owner);
+        Wolf walk = companionWolf(helper, c);
+        Vec3 start = helper.absoluteVec(new Vec3(6, 2, 6));
+        walk.setPos(start.x, start.y, start.z);
+
+        // A raised, walkable platform. The dropped stack rests at Y=3 while Walk starts at Y=2.
+        for (int x = 9; x <= 14; x++) {
+            for (int z = 5; z <= 7; z++) helper.setBlock(new BlockPos(x, 2, z), Blocks.STONE);
+        }
+        ItemEntity resource = drop(helper, start.add(7, 1, 0), new ItemStack(Items.IRON_INGOT, 4));
+        command(owner, "collect");
+        helper.assertTrue(resource.isAlive() && bag(walk).isEmpty(),
+            "An elevated item must not be transferred remotely when the command is issued");
+
+        helper.startSequence()
+            .thenWaitUntil(() -> helper.assertTrue(count(bag(walk), Items.IRON_INGOT) == 4,
+                "Walk must navigate up one block and collect a visible item resting on the raised platform"))
+            .thenExecute(() -> {
+                helper.assertTrue(!resource.isAlive(), "The original elevated item entity must be consumed exactly once");
+                helper.assertTrue(walk.getY() >= 3.0,
+                    "Walk must physically reach the raised platform instead of vacuuming the item from below");
+            })
+            .thenIdle(20)
+            .thenExecute(() -> helper.assertTrue(count(bag(walk), Items.IRON_INGOT) == 4,
+                "Later ticks must not duplicate the elevated resource"))
+            .thenSucceed();
+    }
+
     @GameTest(structure = "markai-test:arena", maxTicks = 350)
     public void gatheringMustWalkToAVisibleResourceBeforeTransferringIt(GameTestHelper helper) throws Exception {
         setup(helper); ServerPlayer owner = owner(helper); command(owner, "spawn");
