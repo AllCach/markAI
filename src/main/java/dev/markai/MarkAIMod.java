@@ -100,7 +100,7 @@ public final class MarkAIMod implements ModInitializer {
     private LlmProvider ollama;
     private ChatJournal chatJournal;
     private final Map<UUID, AISession> aiSessions = new HashMap<>();
-    private final LivingCompanionRuntime livingRuntime = new LivingCompanionRuntime(this::memoryEnabled);
+    private final WolfCompanionRuntime wolfRuntime = new WolfCompanionRuntime(this::memoryEnabled);
     private final WolfWorkRuntime wolfWork = new WolfWorkRuntime();
     private final ChickenCompanionRuntime chickenRuntime = new ChickenCompanionRuntime();
     private final Map<UUID, Integer> memoryPages = new HashMap<>();
@@ -202,7 +202,7 @@ public final class MarkAIMod implements ModInitializer {
             public void remove(ServerPlayer player, String id) { removeCompanion(player, id); }
         });
         CompanionCombatRules.register((wolf, target) -> companions.values().stream().filter(c -> c.entity.equals(wolf.getUUID()))
-            .anyMatch(c -> c.living.settings.defense && !c.dismissed && LivingCompanionRuntime.validTarget(c, target)));
+            .anyMatch(c -> c.living.settings.defense && !c.dismissed && WolfCompanionRuntime.validTarget(c, target)));
         CompanionCombatRules.registerExplicit((wolf, target) -> companions.values().stream().filter(c -> c.entity.equals(wolf.getUUID()))
             .anyMatch(c -> wolfWork.mayAttack(c, wolf, target)));
         ServerLifecycleEvents.SERVER_STARTED.register(s -> {
@@ -213,13 +213,13 @@ public final class MarkAIMod implements ModInitializer {
             attackMissNoticeAt.clear();
             aiSessions.clear();
             groupStates.clear(); groupRuns.clear(); groupStatus.clear(); groupNextRequest.clear();
-            memoryPages.clear(); ownerAutomaticAt.clear(); livingRuntime.clear(); wolfWork.clear();
+            memoryPages.clear(); ownerAutomaticAt.clear(); wolfRuntime.clear(); wolfWork.clear();
             CompanionCombatRules.setCombatRadius(32);
             chatJournal = new ChatJournal(FabricLoader.getInstance().getGameDir().resolve("logs"));
             try {
                 aiConfig = AIConfig.load(FabricLoader.getInstance().getConfigDir().resolve("markai.json"));
                 CompanionCombatRules.setCombatRadius(aiConfig.combatRadius);
-                livingRuntime.observer.setEntityRadius(aiConfig.combatRadius);
+                wolfRuntime.observer.setEntityRadius(aiConfig.combatRadius);
                 if (aiConfig.voiceEnabled) LOG.warn("Voice backend is not installed; dialogue and native wolf sounds remain available");
                 ollama = aiConfig.createProvider();
             } catch (Exception e) {
@@ -279,7 +279,7 @@ public final class MarkAIMod implements ModInitializer {
             CompanionMemory.shutdownWorkers();
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
-            companions.clear(); configured.clear(); livingRuntime.clear(); wolfWork.clear(); memoryPages.clear(); ownerAutomaticAt.clear(); server = null;
+            companions.clear(); configured.clear(); wolfRuntime.clear(); wolfWork.clear(); memoryPages.clear(); ownerAutomaticAt.clear(); server = null;
         });
         ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
             invalidateOwnerSessions(entity.getUUID());
@@ -287,7 +287,7 @@ public final class MarkAIMod implements ModInitializer {
                 wolfWork.remove(c.entity);
                 cancelTrick(c);
                 remember(c, entity, level); configured.remove(c.entity); save();
-                livingRuntime.remove(c.entity);
+                wolfRuntime.remove(c.entity);
                 AISession session = aiSessions.get(c.id);
                 if (session != null) invalidate(session);
             }
@@ -297,7 +297,7 @@ public final class MarkAIMod implements ModInitializer {
                 c.ownerDied = true;
                 Wolf witness = find(c);
                 if (witness != null && witness.level() == entity.level() && witness.distanceTo(entity) <= 16)
-                    livingRuntime.event(c, witness, WorldEvent.Type.PLAYER_DIED, "Хозяин погиб рядом со мной.", 20);
+                    wolfRuntime.event(c, witness, WorldEvent.Type.PLAYER_DIED, "Хозяин погиб рядом со мной.", 20);
             }
             invalidateOwnerSessions(entity.getUUID());
             for (Companion c : companions.values()) if (entity.getUUID().equals(c.entity)) {
@@ -310,7 +310,7 @@ public final class MarkAIMod implements ModInitializer {
                 if (source.getEntity() != null && c.entity.equals(source.getEntity().getUUID())) {
                     awardTaskXp(c, entity.level().getGameTime(), 12);
                     Wolf witness = find(c);
-                    if (witness != null) livingRuntime.event(c, witness, WorldEvent.Type.COMBAT_WON,
+                    if (witness != null) wolfRuntime.event(c, witness, WorldEvent.Type.COMBAT_WON,
                         "Я победил противника: " + entity.getType().getDescription().getString() + ".", 1);
                     save();
                 }
@@ -320,7 +320,7 @@ public final class MarkAIMod implements ModInitializer {
             if (blocked || damage <= 0) return;
             for (Companion c : companions.values()) {
                 Wolf witness = find(c);
-                if (witness != null) livingRuntime.damage(c, witness, entity, source.getEntity(), damage);
+                if (witness != null) wolfRuntime.damage(c, witness, entity, source.getEntity(), damage);
             }
         });
         ServerTickEvents.END_SERVER_TICK.register(s -> {
@@ -328,7 +328,7 @@ public final class MarkAIMod implements ModInitializer {
             for (Companion c : companions.values()) { tick(c); progressionTick(c); }
             if (ticks % 200 == 0) {
                 save();
-                if (aiConfig != null && aiConfig.debugMode) LOG.info("Companion perception metrics: {}", CHAT_JSON.toJson(livingRuntime.observer.metrics()));
+                if (aiConfig != null && aiConfig.debugMode) LOG.info("Companion perception metrics: {}", CHAT_JSON.toJson(wolfRuntime.observer.metrics()));
             }
         });
         // Name routing belongs exclusively to the hub's shared channel, never vanilla or private chat.
@@ -358,8 +358,8 @@ public final class MarkAIMod implements ModInitializer {
                     c.living.behavior.cancel(level.getGameTime());
                     AISession session = aiSessions.get(c.id); if (session != null) invalidate(session);
                     if (owner.getMainHandItem().is(ItemTags.WOLF_FOOD) && wolf.getHealth() < wolf.getMaxHealth())
-                        livingRuntime.event(c, wolf, WorldEvent.Type.OWNER_HEALED_WOLF, "Хозяин покормил меня, когда я был ранен.", 3);
-                    else if (owner.getMainHandItem().isEmpty()) livingRuntime.event(c, wolf, WorldEvent.Type.OWNER_AFFECTION, "Хозяин уделил мне внимание.", 1);
+                        wolfRuntime.event(c, wolf, WorldEvent.Type.OWNER_HEALED_WOLF, "Хозяин покормил меня, когда я был ранен.", 3);
+                    else if (owner.getMainHandItem().isEmpty()) wolfRuntime.event(c, wolf, WorldEvent.Type.OWNER_AFFECTION, "Хозяин уделил мне внимание.", 1);
                 }
             }
             return InteractionResult.PASS;
@@ -530,7 +530,7 @@ public final class MarkAIMod implements ModInitializer {
             AISession session = aiSessions.get(c.id);
             owner.sendSystemMessage(Component.literal(command.equals("memory") ? CHAT_JSON.toJson(c.memory.inspect())
                 : command.equals("mood") ? CHAT_JSON.toJson(c.living.emotions.context())
-                : command.equals("debug") ? CHAT_JSON.toJson(Map.of("state", c.living.context(), "perception", livingRuntime.observer.metrics(), "runtime", livingRuntime.debug(c, find(c)),
+                : command.equals("debug") ? CHAT_JSON.toJson(Map.of("state", c.living.context(), "perception", wolfRuntime.observer.metrics(), "runtime", wolfRuntime.debug(c, find(c)),
                     "ai_latency_ms", session == null ? 0 : session.lastLatencyMillis, "pending_requests", aiSessions.values().stream().filter(s -> s.pending != null).count(),
                     "storage_healthy", storageHealthy)) : CHAT_JSON.toJson(c.living.context())));
             return 1;
@@ -551,7 +551,7 @@ public final class MarkAIMod implements ModInitializer {
                 return popupNotice(owner, "Установка дома доступна только волкам. Ctrl+P отмечает дом всем доступным волкам.", false);
             Wolf wolf = find(c);
             if (wolf == null || wolf.level() != owner.level() || wolf.distanceTo(owner) > 8
-                    || !LivingCompanionRuntime.safePathTarget((ServerLevel) wolf.level(), wolf.position())) {
+                    || !WolfCompanionRuntime.safePathTarget((ServerLevel) wolf.level(), wolf.position())) {
                 owner.sendSystemMessage(Component.literal("Отметить дом можно рядом с волком на безопасной земле.")); return 0;
             }
             c.living.home = new HomeLocation(wolf.level().dimension().identifier().toString(), wolf.getX(), wolf.getY(), wolf.getZ()); save();
@@ -828,7 +828,7 @@ public final class MarkAIMod implements ModInitializer {
                 continue;
             }
             if (command.equals("sethome")) {
-                if (!LivingCompanionRuntime.safePathTarget((ServerLevel) wolf.level(), wolf.position())) {
+                if (!WolfCompanionRuntime.safePathTarget((ServerLevel) wolf.level(), wolf.position())) {
                     skipped++;
                     continue;
                 }
@@ -860,7 +860,7 @@ public final class MarkAIMod implements ModInitializer {
                     default -> throw new IllegalArgumentException("Unsupported group action");
                 };
                 wolfWork.cancel(companion, wolf);
-                result = livingRuntime.request(companion, wolf, owner, action);
+                result = wolfRuntime.request(companion, wolf, owner, action);
             }
             if (result.status() == ActionResult.Status.FAILED) skipped++;
             else accepted++;
@@ -987,7 +987,7 @@ public final class MarkAIMod implements ModInitializer {
             var goals = ((MobAccessor) wolf).markai$goals();
             // Keep the wolf's melee, owner defense, swimming, sitting and natural sounds.
             goals.removeAllGoals(goal -> goal instanceof FollowOwnerGoal);
-            goals.addGoal(1, livingRuntime.goal(c, wolf));
+            goals.addGoal(1, wolfRuntime.goal(c, wolf));
             goals.addGoal(3, new WolfTrickGoal(c, wolf));
             wolfWork.configure(c, wolf);
             // A carried item is an ordinary persistent passenger, never a copied inventory item.
@@ -1005,12 +1005,18 @@ public final class MarkAIMod implements ModInitializer {
             if (entity instanceof Wolf wolf && wolf.isAlive()) return wolf;
             if (entity instanceof Chicken chicken && chicken.isAlive() && storageHealthy
                     && !CompanionSpecies.CHICKEN.entityTypeId().equals(c.species))
-                return migrate(c, chicken, level);
+                return migrateLegacyWolfOnlyChicken(c, chicken, level);
         }
         return null;
     }
 
-    private Wolf migrate(Companion c, Chicken chicken, ServerLevel level) {
+    /**
+     * Compatibility path for pre-multispecies saves that lack a species ID but point
+     * at a chicken entity. New Chicken/Mark records always store minecraft:chicken and
+     * never enter this method. Keep this migration narrow until old save files can be
+     * retired safely; ordinary chickens are never searched by this legacy UUID path.
+     */
+    private Wolf migrateLegacyWolfOnlyChicken(Companion c, Chicken chicken, ServerLevel level) {
         Wolf wolf = EntityTypes.WOLF.create(level, EntitySpawnReason.CONVERSION);
         if (wolf == null) return null;
         wolf.setPos(chicken.getX(), chicken.getY(), chicken.getZ());
@@ -1035,7 +1041,7 @@ public final class MarkAIMod implements ModInitializer {
         if (session != null) invalidate(session);
         configured.remove(previousUuid);
         chicken.discard();
-        LOG.info("Converted companion {} to tamed wolf {} for owner {}", previousUuid, c.entity, c.owner);
+        LOG.info("Migrated legacy wolf-only companion record {} from its saved chicken body to wolf {} for owner {}", previousUuid, c.entity, c.owner);
         return wolf;
     }
 
@@ -1177,15 +1183,15 @@ public final class MarkAIMod implements ModInitializer {
         if (owner == null || !owner.isAlive() || owner.level() != level) {
             wolfWork.cancel(c, wolf);
             cancelTrick(c);
-            if (!c.ownerUnavailable) livingRuntime.event(c, wolf, WorldEvent.Type.PLAYER_LEFT_COMPANION, "Хозяина сейчас нет рядом в этом мире.", 1);
+            if (!c.ownerUnavailable) wolfRuntime.event(c, wolf, WorldEvent.Type.PLAYER_LEFT_COMPANION, "Хозяина сейчас нет рядом в этом мире.", 1);
             c.ownerUnavailable = true;
-            livingRuntime.unavailable(c, wolf); return;
+            wolfRuntime.unavailable(c, wolf); return;
         }
         if (c.ownerUnavailable) {
             c.ownerUnavailable = false;
-            livingRuntime.event(c, wolf, WorldEvent.Type.COMPANION_REUNITED, "Мы снова встретились с хозяином.", 1);
+            wolfRuntime.event(c, wolf, WorldEvent.Type.COMPANION_REUNITED, "Мы снова встретились с хозяином.", 1);
             if (c.ownerDied) {
-                livingRuntime.event(c, wolf, WorldEvent.Type.PLAYER_RESPAWNED, "Хозяин снова жив, и я встретил его после гибели.", 1);
+                wolfRuntime.event(c, wolf, WorldEvent.Type.PLAYER_RESPAWNED, "Хозяин снова жив, и я встретил его после гибели.", 1);
                 c.ownerDied = false;
             }
             if (c.living.emotions.fear < 40 && wolf.getTarget() == null) bark(wolf);
@@ -1204,7 +1210,7 @@ public final class MarkAIMod implements ModInitializer {
                 || wolf.getHealth() < wolf.getMaxHealth() * .25 && wolf.getTarget() != null)) cancelTrick(c);
         if (c.trick != null) { c.action = c.trick.kind.name(); c.memory.flushPending(); return; }
         if (wolfWork.tick(c, wolf, owner)) { c.memory.flushPending(); return; }
-        livingRuntime.tick(c, wolf, owner);
+        wolfRuntime.tick(c, wolf, owner);
         long now = level.getGameTime();
         if (companions.selected(c.owner) == c && c.living.settings.autochat && aiConfig != null
                 && aiConfig.automaticConversationSeconds > 0 && now >= c.nextAutomaticConversation && wolf.distanceTo(owner) <= 12
@@ -1437,7 +1443,7 @@ public final class MarkAIMod implements ModInitializer {
         if (session != null) invalidate(session);
         cancelTrick(companion);
         wolfWork.remove(companion.entity);
-        livingRuntime.remove(companion.entity);
+        wolfRuntime.remove(companion.entity);
         configured.remove(companion.entity);
         if (chicken != null) {
             chickenRuntime.stop(chicken);
@@ -1446,7 +1452,7 @@ public final class MarkAIMod implements ModInitializer {
         if (wolf != null) {
             wolf.getNavigation().stop();
             wolf.setTarget(null);
-            livingRuntime.unconfigure(companion, wolf);
+            wolfRuntime.unconfigure(companion, wolf);
             var goals = ((MobAccessor) wolf).markai$goals();
             goals.removeAllGoals(goal -> goal instanceof WolfTrickGoal || goal instanceof FollowOwnerGoal);
             wolfWork.unconfigure(wolf);
@@ -1504,7 +1510,7 @@ public final class MarkAIMod implements ModInitializer {
         if (wolf == null) { owner.sendSystemMessage(Component.literal("Компаньон не загружен. /mark summon")); return 0; }
         wolfWork.cancel(c, wolf);
         cancelTrick(c); invalidate(aiSessions.computeIfAbsent(c.id, key -> new AISession()));
-        ActionResult result = livingRuntime.request(c, wolf, owner, action);
+        ActionResult result = wolfRuntime.request(c, wolf, owner, action);
         owner.sendSystemMessage(Component.literal(c.living.name + ": " + result.message()));
         CompanionNetwork.notice(owner, result.status() == ActionResult.Status.FAILED ? "error" : "status", result.message());
         save(); return result.status() == ActionResult.Status.FAILED ? 0 : 1;
@@ -1560,7 +1566,7 @@ public final class MarkAIMod implements ModInitializer {
         cancelTrick(c);
         Wolf wolf = find(c);
         wolfWork.cancel(c, wolf);
-        if (wolf != null) livingRuntime.request(c, wolf, owner, CompanionAction.CANCEL);
+        if (wolf != null) wolfRuntime.request(c, wolf, owner, CompanionAction.CANCEL);
         else { c.requestedAction = null; c.living.behavior.cancel(server.getTickCount()); }
     }
 
@@ -1588,7 +1594,7 @@ public final class MarkAIMod implements ModInitializer {
         }
         for (int dy : new int[]{0, 1, -1}) for (int[] offset : new int[][]{{2,0},{-2,0},{0,2},{0,-2},{2,2},{-2,-2}}) {
             Vec3 pos = owner.position().add(offset[0], dy, offset[1]);
-            if (!LivingCompanionRuntime.safePathTarget(destination, pos)
+            if (!WolfCompanionRuntime.safePathTarget(destination, pos)
                     || !destination.noCollision(wolf, wolf.getBoundingBox().move(pos.subtract(wolf.position())))) continue;
             cancelTrick(c); invalidate(aiSessions.computeIfAbsent(c.id, key -> new AISession()));
             Entity arrived = wolf.teleport(new TeleportTransition(destination, pos, Vec3.ZERO,
@@ -1598,7 +1604,7 @@ public final class MarkAIMod implements ModInitializer {
                 owner.sendSystemMessage(Component.literal("Не удалось подтвердить прибытие компаньона. Проверьте /mark status.")); return 0;
             }
             if (current != wolf) configured.remove(c.entity);
-            livingRuntime.remove(c.entity);
+            wolfRuntime.remove(c.entity);
             c.dismissed = false; c.following = true; c.requestedAction = null; c.ownerUnavailable = false;
             remember(c, current, destination); configure(c, current); current.setOrderedToSit(false);
             c.expectedSit = false; c.sitObserved = true; c.automaticSit = false; save();
@@ -1617,7 +1623,7 @@ public final class MarkAIMod implements ModInitializer {
         for (int dy : new int[]{0, 1, -1}) {
             for (int[] offset : new int[][]{{2,0},{-2,0},{0,2},{0,-2},{2,2},{-2,-2}}) {
                 Vec3 pos = owner.position().add(offset[0], dy, offset[1]);
-                if (!LivingCompanionRuntime.safePathTarget(destination, pos)
+                if (!WolfCompanionRuntime.safePathTarget(destination, pos)
                         || !destination.noCollision(chicken, chicken.getBoundingBox().move(pos.subtract(chicken.position())))) continue;
                 chickenRuntime.stop(chicken);
                 Entity arrived = chicken.teleport(new TeleportTransition(destination, pos, Vec3.ZERO,
@@ -2165,7 +2171,7 @@ public final class MarkAIMod implements ModInitializer {
 
     /** Coarse changes only: ticking clocks, footsteps and follow/idle oscillation are not new topics. */
     private String ambientScene(Companion c, Wolf wolf, ServerPlayer owner) {
-        var view = livingRuntime.world(c, wolf, owner); var environment = view.environment();
+        var view = wolfRuntime.world(c, wolf, owner); var environment = view.environment();
         WorldEvent event = freshAmbientEvent(c, wolf.level().getGameTime());
         return CHAT_JSON.toJson(List.of(environment.dimension(), environment.biome(), environment.raining(),
             environment.thundering(), environment.dangerous_cave(), environment.time_of_day() / 6000,
@@ -2262,7 +2268,7 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private String snapshot(Companion c, Wolf wolf, ServerPlayer owner, String question) {
-        var view = livingRuntime.world(c, wolf, owner);
+        var view = wolfRuntime.world(c, wolf, owner);
         var facts = new LinkedHashMap<String, Object>();
         facts.put("companion", Map.of("name", c.living.name, "type", "minecraft:wolf", "health", wolf.getHealth(),
             "max_health", wolf.getMaxHealth(), "tamed", wolf.isTame(), "can_attack", c.living.settings.defense,
@@ -2339,7 +2345,7 @@ public final class MarkAIMod implements ModInitializer {
         if (action != null) {
             wolfWork.cancel(c, wolf);
             cancelTrick(c);
-            ActionResult result = livingRuntime.request(c, wolf, owner, action);
+            ActionResult result = wolfRuntime.request(c, wolf, owner, action);
             if (result.status() == ActionResult.Status.FAILED) reply = new OllamaClient.Reply("say", result.message());
         }
         if (!reply.say().isBlank()) {
