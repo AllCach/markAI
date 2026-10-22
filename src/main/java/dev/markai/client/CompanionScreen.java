@@ -48,6 +48,11 @@ public final class CompanionScreen extends Screen {
     private static Component tr(String key) { return Component.translatable(key); }
     private static String label(String key) { return tr(key).getString(); }
     private ClientCompanionState state() { return MarkAIClient.STATE; }
+    private boolean isChickenSelected() {
+        String species = state().string("species", "minecraft:wolf");
+        return species.equals("chicken") || species.equals("minecraft:chicken");
+    }
+    private boolean isSelectedDead() { return state().bool("dead", false); }
 
     @Override protected void init() {
         if (!companionId.equals(state().companionId())) resetCompanionDrafts();
@@ -166,20 +171,30 @@ public final class CompanionScreen extends Screen {
             previousCard.setTooltip(Tooltip.create(tr("markai.ui.previous_companion")));
             nextCard.setTooltip(Tooltip.create(tr("markai.ui.next_companion")));
         }
-        String[] actions = {"spawn", "tame", "summon", "dismiss"};
-        int columns = profileActionColumns();
+        String[] actions;
+        if (isChickenSelected()) {
+            // Chickens have their own runtime; never present wolf adoption or wolf spawning here.
+            actions = isSelectedDead() ? new String[] {"spawn"} : new String[] {"summon", "dismiss"};
+        } else {
+            actions = isSelectedDead() ? new String[] {"spawn"} : new String[] {"spawn", "tame", "summon", "dismiss"};
+        }
+        int columns = panelWidth >= 420 ? Math.min(4, actions.length) : Math.min(2, actions.length);
         int rows = (actions.length + columns - 1) / columns;
         int w = (panelWidth - 20 - (columns - 1) * 3) / columns;
         int y = contentBottom - (rows * 23 - 3);
         for (int i = 0; i < actions.length; i++) {
             String action = actions[i];
-            addButton(label("markai.command." + action), left + 10 + (i % columns) * (w + 3), y + (i / columns) * 23, w, () -> command(action));
+            String key = action.equals("spawn") && isSelectedDead() ? "markai.command.respawn" : "markai.command." + action;
+            Button button = addButton(label(key), left + 10 + (i % columns) * (w + 3), y + (i / columns) * 23, w, () -> command(action));
+            if (action.equals("summon")) button.setTooltip(Tooltip.create(tr("markai.command.hint.summon")));
+            if (action.equals("dismiss")) button.setTooltip(Tooltip.create(tr("markai.command.hint.dismiss")));
+            if (action.equals("tame")) button.setTooltip(Tooltip.create(tr("markai.command.hint.tame")));
         }
     }
     private int profileActionColumns() { return panelWidth >= 420 ? 4 : 2; }
     private void initCommands() {
-        String[] actions = "chicken".equals(state().string("species", "wolf"))
-            ? new String[] {"follow", "stay", "come", "rest", "stop"}
+        String[] actions = isChickenSelected()
+            ? new String[] {"follow", "come", "stay", "rest", "stop", "summon", "dismiss"}
             : new String[] {"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory", "attack", "collect", "stop"};
         int availableHeight = contentBottom - contentTop;
         int maxRows = Math.max(1, (availableHeight + 3) / 23);
@@ -340,6 +355,7 @@ public final class CompanionScreen extends Screen {
         String name = state().string("name", "Mark");
         int index = companionIndex();
         String selected = (index < 0 ? "" : (index + 1) + "/" + state().companions().size() + " ") + name;
+        if (panelWidth >= 390) selected += " · " + label("markai.species." + (isChickenSelected() ? "chicken" : "wolf"));
         if (panelWidth >= 550) selected += " · " + localizedState("activity", state().string("activity", "IDLE"));
         graphics.text(font, font.plainSubstrByWidth(selected, panelWidth - 202), left + 116, top + 14, ACCENT);
         switch (tab) {
