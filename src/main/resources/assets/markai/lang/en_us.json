@@ -34,6 +34,7 @@
     "markai.command.rest":  "Rest",
     "markai.command.wander":  "Wander nearby",
     "markai.command.home":  "Return home",
+    "markai.command.investigate":  "Investigate",
     "markai.command.sethome":  "Set home here",
     "markai.command.inventory":  "Inventory",
     "markai.ui.send":  "Send",
