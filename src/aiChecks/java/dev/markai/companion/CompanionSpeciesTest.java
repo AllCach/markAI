@@ -19,6 +19,10 @@ public final class CompanionSpeciesTest {
         check(CompanionSpecies.fromEntityTypeId(" ").isEmpty(), "Blank entity ID is rejected safely");
         check(CompanionSpecies.fromEntityTypeId("minecraft:creeper").isEmpty(),
             "Unknown species is not silently accepted");
+        check(CompanionSpecies.WOLF.runtimeSupported(), "Wolf runtime is supported");
+        check(CompanionSpecies.CHICKEN.runtimeSupported(), "Chicken runtime is supported");
+        check(CompanionSpecies.WOLF.supportsWolfTricks(), "Only the wolf supports wolf trick training");
+        check(!CompanionSpecies.CHICKEN.supportsWolfTricks(), "Chicken cannot access wolf trick training");
         check(CompanionSpecies.WOLF.supportsCombat() && CompanionSpecies.WOLF.supportsInventory(),
             "Wolf retains combat and inventory capabilities");
         check(!CompanionSpecies.CHICKEN.supportsCombat() && !CompanionSpecies.CHICKEN.supportsInventory(),
