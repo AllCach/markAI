@@ -524,6 +524,8 @@ public final class MarkAIMod implements ModInitializer {
             return 1;
         }
         if (command.equals("sethome")) {
+            if (CompanionSpecies.CHICKEN.id().equals(c.species))
+                return popupNotice(owner, "Установка дома доступна только волкам. Ctrl+P отмечает дом всем доступным волкам.", false);
             Wolf wolf = find(c);
             if (wolf == null || wolf.level() != owner.level() || wolf.distanceTo(owner) > 8
                     || !LivingCompanionRuntime.safePathTarget((ServerLevel) wolf.level(), wolf.position())) {
@@ -535,7 +537,14 @@ public final class MarkAIMod implements ModInitializer {
         if (command.equals("summon")) return summon(c, owner);
         if (command.equals("dismiss")) {
             cancelRequest(owner); cancelTrick(c); c.dismissed = true; c.following = false;
-            Wolf wolf = find(c); if (wolf != null) { wolf.setOrderedToSit(true); wolf.setTarget(null); wolf.getNavigation().stop(); }
+            if (CompanionSpecies.CHICKEN.id().equals(c.species)) {
+                Chicken chicken = findChicken(c);
+                if (chicken != null) chickenRuntime.stop(chicken);
+                c.action = "STAY";
+            } else {
+                Wolf wolf = find(c);
+                if (wolf != null) { wolf.setOrderedToSit(true); wolf.setTarget(null); wolf.getNavigation().stop(); }
+            }
             save(); owner.sendSystemMessage(Component.literal(c.living.name + " остаётся ждать. /mark summon — позвать обратно.")); return 1;
         }
         CompanionAction naturalAction = switch (command) {
