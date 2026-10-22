@@ -16,6 +16,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.animal.cow.Cow;
 import net.minecraft.world.entity.animal.wolf.Wolf;
+import net.minecraft.world.entity.animal.chicken.Chicken;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -269,6 +270,70 @@ public final class MultiCompanionGameTest {
         JsonObject strangerView=JsonParser.parseString(backend().snapshot(stranger)).getAsJsonObject();
         helper.assertTrue(strangerView.getAsJsonObject("group").get("mutual_replies").getAsBoolean(),"A different owner's group preferences remain separate");
         helper.succeed();
+    }
+
+    @GameTest(structure = "markai-test:arena", maxTicks = 200)
+    public void wolfAndChickenCompanionsCoexistWithoutCrossSpeciesOrders(GameTestHelper helper) throws Exception {
+        for (int x = 0; x < 32; x++) for (int z = 0; z < 32; z++)
+            helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+
+        ServerPlayer owner = player(helper, 2, 2, 2);
+        MarkAIMod mod = FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream()
+            .filter(MarkAIMod.class::isInstance).map(MarkAIMod.class::cast).findFirst().orElseThrow();
+        var registry = TestCompanions.registry(mod);
+
+        command(owner, "mark spawn");
+        MarkAIMod.Companion wolfCompanion = registry.selected(owner.getUUID());
+        helper.assertTrue(wolfCompanion != null, "The wolf companion is registered first");
+        Wolf wolf = (Wolf) helper.getLevel().getEntity(wolfCompanion.entity);
+        helper.assertTrue(wolf != null && wolf.isAlive(), "The first companion is a real living wolf");
+
+        command(owner, "mark spawn chicken");
+        MarkAIMod.Companion chickenCompanion = registry.selected(owner.getUUID());
+        helper.assertTrue(chickenCompanion != null && chickenCompanion != wolfCompanion,
+            "Chicken creation registers a separate logical companion");
+        Chicken chicken = (Chicken) helper.getLevel().getEntity(chickenCompanion.entity);
+        helper.assertTrue(chicken != null && chicken.isAlive() && wolf.isAlive(),
+            "The chicken and wolf entities coexist without replacing one another");
+        helper.assertTrue(!wolfCompanion.entity.equals(chickenCompanion.entity)
+                && registry.owned(owner.getUUID()).size() == 2
+                && "minecraft:wolf".equals(wolfCompanion.species)
+                && "minecraft:chicken".equals(chickenCompanion.species),
+            "Both species have separate entity UUIDs and species identities");
+
+        command(owner, "mark stay");
+        helper.assertTrue(!chickenCompanion.following && wolfCompanion.following,
+            "Stay applies only to the selected chicken");
+        backend().select(owner, wolfCompanion.id.toString());
+        command(owner, "mark stay");
+        helper.assertTrue(!wolfCompanion.following && !chickenCompanion.following,
+            "Selecting the wolf changes only the wolf's movement state");
+        backend().select(owner, chickenCompanion.id.toString());
+        command(owner, "mark follow");
+        helper.assertTrue(chickenCompanion.following && !wolfCompanion.following,
+            "Following the chicken does not restart the wolf");
+
+        Path path = helper.getLevel().getServer().getWorldPath(LevelResource.ROOT).resolve("markai.json");
+        JsonObject state = JsonParser.parseString(Files.readString(path)).getAsJsonObject();
+        boolean savedWolf = false;
+        boolean savedChicken = false;
+        for (var element : state.getAsJsonArray("companions")) {
+            JsonObject saved = element.getAsJsonObject();
+            String species = saved.has("species") ? saved.get("species").getAsString() : "minecraft:wolf";
+            if (wolfCompanion.id.toString().equals(saved.get("id").getAsString()))
+                savedWolf = "minecraft:wolf".equals(species);
+            if (chickenCompanion.id.toString().equals(saved.get("id").getAsString()))
+                savedChicken = "minecraft:chicken".equals(species);
+        }
+        helper.assertTrue(savedWolf && savedChicken,
+            "The real world save persists both species identities without converting the chicken to a wolf");
+
+        helper.startSequence().thenIdle(30).thenExecute(() -> {
+            helper.assertTrue(wolf.isAlive() && chicken.isAlive()
+                    && helper.getLevel().getEntity(wolfCompanion.entity) == wolf
+                    && helper.getLevel().getEntity(chickenCompanion.entity) == chicken,
+                "Species-specific ticking keeps both original entities alive");
+        }).thenSucceed();
     }
 
     private static ServerPlayer player(GameTestHelper helper, int x, int y, int z) {
