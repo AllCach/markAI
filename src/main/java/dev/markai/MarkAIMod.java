@@ -1,6 +1,7 @@
 package dev.markai;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.GsonBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import dev.markai.ai.AIConfig;
@@ -936,11 +937,16 @@ public final class MarkAIMod implements ModInitializer {
 
     private String chickenAmbientScene(Companion c, Chicken chicken, ServerPlayer owner) {
         WorldEvent event = freshAmbientEvent(c, chicken.level().getGameTime());
-        return CHAT_JSON.toJson(List.of(chicken.level().dimension().identifier().toString(),
-            chicken.level().getBiome(chicken.blockPosition()).toString(), chicken.level().isRaining(),
-            chicken.level().isThundering(), chicken.level().getDayTime() / 6000,
-            c.living.emotions.mood.name(), event == null ? "none" : event.type().name() + ":" + event.gameTime(),
-            (int) chicken.distanceTo(owner)));
+        JsonArray scene = new JsonArray();
+        scene.add(chicken.level().dimension().identifier().toString());
+        scene.add(chicken.level().getBiome(chicken.blockPosition()).toString());
+        scene.add(chicken.level().isRaining());
+        scene.add(chicken.level().isThundering());
+        scene.add(chicken.level().getOverworldClockTime() / 6000);
+        scene.add(c.living.emotions.mood.name());
+        scene.add(event == null ? "none" : event.type().name() + ":" + event.gameTime());
+        scene.add((int) chicken.distanceTo(owner));
+        return CHAT_JSON.toJson(scene);
     }
 
     private void tick(Companion c) {
@@ -2005,7 +2011,7 @@ public final class MarkAIMod implements ModInitializer {
         facts.put("player", Map.of("name", owner.getGameProfile().name(), "position", position(owner),
             "dimension", owner.level().dimension().identifier().toString()));
         facts.put("environment", Map.of("dimension", chicken.level().dimension().identifier().toString(),
-            "day_time", chicken.level().getDayTime(), "raining", chicken.level().isRaining(),
+            "day_time", chicken.level().getOverworldClockTime(), "raining", chicken.level().isRaining(),
             "thundering", chicken.level().isThundering()));
         facts.put("identity", new CompanionIdentity(c.id, c.owner, c.entity));
         facts.put("danger_now", false);
