@@ -227,7 +227,7 @@ public final class CompanionHubScreen extends Screen {
         graphics.outline(left,top,panelWidth,panelHeight,0xFF426152);
         graphics.text(font,font.plainSubstrByWidth(title.getString(),panelWidth-100),left+44,top+14,WHITE);
         switch(tab) {
-            case COMPANIONS -> drawRoster(graphics);
+            case COMPANIONS -> drawRoster(graphics, mouseX, mouseY);
             case GROUP_COMMANDS -> {
                 graphics.text(font,font.plainSubstrByWidth(label("markai.hub.group_commands_hint"),panelWidth-28),left+14,contentTop+2,MUTED);
                 if (groupRows()>visibleGroupRows()) graphics.text(font,label("markai.hub.group_commands_scroll"),left+14,contentBottom-12,MUTED);
@@ -245,7 +245,7 @@ public final class CompanionHubScreen extends Screen {
         graphics.text(font,font.plainSubstrByWidth(status,panelWidth-24),left+12,top+panelHeight-18,state().errorNotice()?0xFFFFA1A1:MUTED);
         super.extractRenderState(graphics,mouseX,mouseY,partialTick);
     }
-    private void drawRoster(GuiGraphicsExtractor graphics) {
+    private void drawRoster(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         graphics.text(font,font.plainSubstrByWidth(label("markai.hub.roster_hint"),panelWidth-28),left+14,contentTop+1,MUTED);
         if (state().companions().isEmpty()) { graphics.text(font,tr("markai.hub.empty"),left+14,contentTop+25,MUTED); return; }
         for (int i=0;i<visibleCards() && i+rosterOffset<state().companions().size();i++) {
