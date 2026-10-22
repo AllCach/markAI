@@ -122,6 +122,7 @@
     "markai.hub.open_short":  "Все",
     "markai.hub.tab.companions":  "Питомцы",
     "markai.hub.tab.group_commands":  "Общие команды",
+    "markai.hub.tab.group_short":  "Всем",
     "markai.hub.group_commands_hint":  "Приказ для всех подходящих компаньонов. Несовместимые команды будут пропущены.",
     "markai.hub.group_commands_scroll":  "Колёсико мыши — остальные команды",
     "markai.hub.group_command_hint":  "Приказ применяется ко всей группе; неподдерживаемые для вида команды будут пропущены.",
