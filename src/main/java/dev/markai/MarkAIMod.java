@@ -205,6 +205,31 @@ public final class MarkAIMod implements ModInitializer {
             }
             public void setting(ServerPlayer player, String key, String value) { updateSetting(player, key, value); }
             public void remove(ServerPlayer player, String id) { removeCompanion(player, id); }
+            public void journalNote(ServerPlayer player, String speciesId, String text, String noteId) {
+                if (!fieldJournalStorageHealthy) {
+                    CompanionNetwork.notice(player, "error", "Журнал недоступен для записи: ошибка сохранения.");
+                    return;
+                }
+                FieldJournal journal = fieldJournals.get(player.getUUID());
+                if (journal == null) {
+                    CompanionNetwork.notice(player, "error", "Сначала изучи существо, чтобы добавить заметку.");
+                    return;
+                }
+                boolean changed;
+                if (noteId.equals("0")) changed = journal.addNote(speciesId, text, player.level().getGameTime());
+                else {
+                    long id;
+                    try { id = Long.parseLong(noteId); } catch (NumberFormatException invalid) { return; }
+                    changed = journal.removeNote(speciesId, id);
+                }
+                if (!changed) {
+                    CompanionNetwork.notice(player, "error", "Заметка не сохранена. Проверь вид, текст и лимит записей.");
+                    return;
+                }
+                save();
+                CompanionNetwork.notice(player, "status", noteId.equals("0") ? "Заметка добавлена." : "Заметка удалена.");
+                CompanionNetwork.sendSnapshot(player);
+            }
         });
         CompanionCombatRules.register((wolf, target) -> companions.values().stream().filter(c -> c.entity.equals(wolf.getUUID()))
             .anyMatch(c -> c.living.settings.defense && !c.dismissed && LivingCompanionRuntime.validTarget(c, target)));
