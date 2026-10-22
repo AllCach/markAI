@@ -72,8 +72,9 @@ public final class CompanionProgressionTest {
         check(p.sampleTravel(120, 0, "minecraft:overworld") == 0, "A 20-block sample stays below the milestone");
         check(p.sampleTravel(140, 0, "minecraft:overworld") == 0, "Route distance accumulates without granting early XP");
         check(p.sampleTravel(160, 0, "minecraft:overworld") == 0, "Route continues to accumulate");
-        check(p.sampleTravel(180, 0, "minecraft:overworld") == 8, "96 real route blocks grant eight XP");
-        check(p.sampleTravel(200, 0, "minecraft:overworld") == 0, "Travel rewards do not repeat before the next milestone");
+        check(p.sampleTravel(180, 0, "minecraft:overworld") == 0, "Route remains below the 96-block milestone");
+        check(p.sampleTravel(200, 0, "minecraft:overworld") == 8, "96 real route blocks grant eight XP");
+        check(p.sampleTravel(220, 0, "minecraft:overworld") == 0, "Travel rewards do not repeat before the next milestone");
         p.resetTravelSample();
         check(p.sampleTravel(0, 0, "minecraft:the_nether") == 0, "Changing dimensions resets the travel baseline");
         check(p.discoverBiome("minecraft:plains") == 0, "First biome establishes baseline without XP");
