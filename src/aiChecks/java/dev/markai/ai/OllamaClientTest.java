@@ -64,6 +64,33 @@ public final class OllamaClientTest {
             require(messages.size() == 2 && messages.get(1).getAsJsonObject().get("content").getAsString().equals("А с чем?"),
                 "Repair does not invent a followup question or assistant exchange");
         });
+        check("species identity is injected from persisted state, not a shared wolf-only prompt", () -> {
+            String chickenContext = "{\\"companion\\":{\\"name\\":\\"Mark\\",\\"type\\":\\"minecraft:chicken\\"}}";
+            String wolfContext = "{\\"companion\\":{\\"name\\":\\"Walk\\",\\"type\\":\\"minecraft:wolf\\"}}";
+            String chickenSystem = OllamaClient.dialogueMessages(chickenContext, "Ты вообще кто?", List.of())
+                .get(0).getAsJsonObject().get("content").getAsString();
+            String wolfSystem = OllamaClient.dialogueMessages(wolfContext, "Ты вообще кто?", List.of())
+                .get(0).getAsJsonObject().get("content").getAsString();
+            require(chickenSystem.contains("Ты курица-компаньон, а НЕ волк")
+                    && !chickenSystem.contains("Ты — Марк, разумный говорящий волк")
+                    && !chickenSystem.contains("Твоё физическое тело — приручённый волк"),
+                "Chicken receives no contradictory wolf-only base persona");
+            require(wolfSystem.contains("Ты волк-компаньон") && wolfSystem.contains("можешь атаковать допустимую цель"),
+                "Wolf retains its species-specific body and gameplay capabilities");
+        });
+        check("zombie and sword facts respect the selected species", () -> {
+            String chicken = OllamaClient.dialogueMessages(
+                "{\\"companion\\":{\\"name\\":\\"Mark\\",\\"type\\":\\"minecraft:chicken\\"}}",
+                "Может ли зомби убить тебя мечом?", List.of()).get(0).getAsJsonObject().get("content").getAsString();
+            String wolf = OllamaClient.dialogueMessages(
+                "{\\"companion\\":{\\"name\\":\\"Walk\\",\\"type\\":\\"minecraft:wolf\\"}}",
+                "Может ли зомби убить тебя мечом?", List.of()).get(0).getAsJsonObject().get("content").getAsString();
+            require(chicken.contains("не утверждай, что можешь кусать врагов")
+                    && !chicken.contains("Как приручённый волк, ты можешь кусать"),
+                "Chicken receives no wolf combat factual rule");
+            require(wolf.contains("Как приручённый волк, ты можешь кусать враждебных существ"),
+                "Wolf receives its real combat factual rule");
+        });
         check("ambient speech uses its own prompt and authoritative night phase", () -> {
             var messages = OllamaClient.dialogueMessages(
                 "{\"conversation_mode\":\"ambient\",\"environment\":{\"time_of_day\":17000,\"raining\":false},\"recent_lines\":[]}",
