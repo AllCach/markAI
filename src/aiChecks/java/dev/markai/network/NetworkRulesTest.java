@@ -8,10 +8,10 @@ public final class NetworkRulesTest {
                 "spawn", "summon", "dismiss", "investigate", "memory_prev", "memory_next", "cancel", "tame", "attack", "collect", "stop"}) {
             check(NetworkRules.action(action), "Known action " + action);
         }
-        for (String action : new String[]{"attack", "collect", "stop", "come", "stay", "follow", "rest", "wander", "home", "investigate"}) {
+        for (String action : new String[]{"attack", "collect", "stop", "come", "stay", "follow", "rest", "wander", "home", "sethome", "investigate"}) {
             check(NetworkRules.groupAction(action) && NetworkRules.action("all:" + action), "Allowed group action: " + action);
         }
-        for (String action : new String[]{"spawn", "respawn", "tame", "inventory", "status", "forget", "cancel", "sethome",
+        for (String action : new String[]{"spawn", "spawn_chicken", "respawn", "tame", "inventory", "status", "forget", "cancel",
                 "summon", "dismiss", "memory", "deleteMemory", "train", "", "ATTACK", "../attack", "attack\nkill @e"}) {
             check(!NetworkRules.groupAction(action) && !NetworkRules.action("all:" + action), "Rejected group action: " + action);
         }

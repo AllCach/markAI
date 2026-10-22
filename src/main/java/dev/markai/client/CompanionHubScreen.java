@@ -10,6 +10,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
@@ -20,12 +21,13 @@ import java.util.Locale;
 /** One owner roster, shared conversation and bulk preferences; personal screens remain separate. */
 @Environment(EnvType.CLIENT)
 public final class CompanionHubScreen extends Screen {
-    public enum Tab { COMPANIONS, CHAT, SETTINGS }
+    public enum Tab { COMPANIONS, GROUP_COMMANDS, CHAT, SETTINGS }
     private static final int WHITE=0xFFE8EFEA, MUTED=0xFF9DB4A8, ACCENT=0xFF9CDBB5;
     private static final List<String> SETTINGS = List.of("all:defense", "all:autochat", "all:hud", "all:follow_distance", "group_enabled", "mutual_replies");
+    private static final List<String> GROUP_COMMANDS = List.of("follow", "come", "stay", "stop", "attack", "collect", "rest", "wander", "home", "sethome", "investigate");
     private Tab tab;
     private int left, top, panelWidth, panelHeight, contentTop, contentBottom;
-    private int rosterOffset, settingsOffset, chatScroll;
+    private int rosterOffset, settingsOffset, chatScroll, groupOffset;
     private int rosterSize = -1;
     private String draft = "", requestedId = "", confirmRemoveId = "", pendingRemoveId = "";
     private CompanionScreen.Tab requestedTab;
@@ -33,6 +35,7 @@ public final class CompanionHubScreen extends Screen {
     private EditBox input;
     private Button send, cancel;
     private final List<Button> settingsButtons = new ArrayList<>();
+    private final List<Button> groupButtons = new ArrayList<>();
     private final java.util.Map<String, Button> removeButtons = new java.util.LinkedHashMap<>();
 
     public CompanionHubScreen() { this(Tab.COMPANIONS); }
@@ -43,20 +46,24 @@ public final class CompanionHubScreen extends Screen {
     @Override public boolean isPauseScreen() { return false; }
     @Override protected void init() {
         if (input != null) draft = input.getValue();
-        input = null; send = null; cancel = null; settingsButtons.clear(); removeButtons.clear();
+        input = null; send = null; cancel = null; settingsButtons.clear(); groupButtons.clear(); removeButtons.clear();
         panelWidth = Math.min(820, width - 16); panelHeight = Math.min(500, height - 16);
         left = (width - panelWidth) / 2; top = (height - panelHeight) / 2;
-        contentTop = top + 64; contentBottom = top + panelHeight - 30;
+        contentTop = top + (panelWidth < 440 ? 82 : 64); contentBottom = top + panelHeight - 30;
         button("‹", left + 10, top + 8, 24, () -> MarkAIClient.show(CompanionScreen.Tab.PROFILE, false));
         button("×", left + panelWidth - 30, top + 8, 20, () -> minecraft.gui.setScreen(null));
-        int tabWidth = (panelWidth - 20) / 3;
+        int columns = panelWidth < 440 ? 2 : Tab.values().length;
         for (Tab destination : Tab.values()) {
+            int row = destination.ordinal() / columns;
+            int column = destination.ordinal() % columns;
+            int tabWidth = (panelWidth - 20 - (columns - 1) * 3) / columns;
             Button button = button(label("markai.hub.tab." + destination.name().toLowerCase(Locale.ROOT)),
-                left + 10 + destination.ordinal() * tabWidth, top + 35, tabWidth - 3, () -> changeTab(destination));
+                left + 10 + column * (tabWidth + 3), top + 35 + row * 23, tabWidth, () -> changeTab(destination));
             button.active = tab != destination;
         }
         switch (tab) {
             case COMPANIONS -> initRoster();
+            case GROUP_COMMANDS -> initGroupCommands();
             case CHAT -> initChat();
             case SETTINGS -> initSettings();
         }
@@ -68,20 +75,21 @@ public final class CompanionHubScreen extends Screen {
     private void changeTab(Tab next) { if (input != null) draft = input.getValue(); tab = next; clearWidgets(); init(); MarkAIClient.request(); }
     private int columns() { return panelWidth >= 560 ? 2 : 1; }
     private int cardWidth() { return (panelWidth - 28 - (columns()-1)*8) / columns(); }
-    private int visibleCards() { return Math.max(1, (contentBottom-contentTop-14)/72) * columns(); }
+    private int visibleCards() { return Math.max(1, (contentBottom-contentTop-14)/96) * columns(); }
     private int settingSlots() { return Math.max(1, Math.min(SETTINGS.size(), (contentBottom-contentTop-14)/24)); }
     private void initRoster() {
         rosterSize = state().companions().size();
+        if (rosterSize == 0) return;
         rosterOffset = Math.min(rosterOffset, Math.max(0, rosterSize-visibleCards()));
         for (int i=0; i<visibleCards() && i+rosterOffset<rosterSize; i++) {
             JsonObject member = state().companions().get(i+rosterOffset).getAsJsonObject();
             String id = ClientCompanionState.string(member,"id","");
-            int x=left+14+(i%columns())*(cardWidth()+8), y=contentTop+14+(i/columns())*72;
+            int x=left+14+(i%columns())*(cardWidth()+8), y=contentTop+14+(i/columns())*96;
             int w=(cardWidth()-16)/3;
             removeButtons.put(id, button(label("markai.hub.remove"),x+cardWidth()-76,y+3,56,()->removeMember(id)));
-            button(label("markai.tab.profile"),x+6,y+43,w,()->openMember(id,CompanionScreen.Tab.PROFILE));
-            button(label("markai.tab.dialogue"),x+9+w,y+43,w,()->openMember(id,CompanionScreen.Tab.DIALOGUE));
-            button(label("markai.tab.settings"),x+12+2*w,y+43,w,()->openMember(id,CompanionScreen.Tab.SETTINGS));
+            button(label("markai.tab.profile"),x+6,y+67,w,()->openMember(id,CompanionScreen.Tab.PROFILE));
+            button(label("markai.tab.dialogue"),x+9+w,y+67,w,()->openMember(id,CompanionScreen.Tab.DIALOGUE));
+            button(label("markai.tab.settings"),x+12+2*w,y+67,w,()->openMember(id,CompanionScreen.Tab.SETTINGS));
         }
     }
     private void openMember(String id, CompanionScreen.Tab destination) {
@@ -100,6 +108,39 @@ public final class CompanionHubScreen extends Screen {
             pendingRemoveId = id;
             pendingRemoveUntil = System.nanoTime() + 3_000_000_000L;
             state().notice("status", label("markai.hub.removing"));
+        }
+    }
+    private static boolean isChickenSpecies(String species) {
+        return species.equals("chicken") || species.equals("minecraft:chicken");
+    }
+    private boolean hasWolfCompanion() {
+        for (var entry : state().companions()) {
+            if (!entry.isJsonObject()) continue;
+            if (!isChickenSpecies(ClientCompanionState.string(entry.getAsJsonObject(), "species", "minecraft:wolf"))) return true;
+        }
+        return false;
+    }
+    private static boolean requiresWolf(String action) {
+        return List.of("attack", "collect", "wander", "home", "sethome", "investigate").contains(action);
+    }
+    private int groupColumns() { return panelWidth >= 680 ? 4 : panelWidth >= 450 ? 3 : 2; }
+    private int groupRows() { return (GROUP_COMMANDS.size() + groupColumns() - 1) / groupColumns(); }
+    private int visibleGroupRows() { return Math.max(1, (contentBottom - contentTop - 40) / 25); }
+    private void initGroupCommands() {
+        groupOffset = Math.min(groupOffset, Math.max(0, groupRows() - visibleGroupRows()));
+        int columns = groupColumns();
+        int w = (panelWidth - 28 - (columns - 1) * 6) / columns;
+        int start = groupOffset * columns;
+        int end = Math.min(GROUP_COMMANDS.size(), start + visibleGroupRows() * columns);
+        for (int i = start; i < end; i++) {
+            String action = GROUP_COMMANDS.get(i);
+            int local = i - start;
+            String commandLabel = action.equals("sethome") ? "markai.command.group_sethome" : "markai.command." + action;
+            Button command = button(label(commandLabel),
+                left + 14 + (local % columns) * (w + 6),
+                contentTop + 25 + (local / columns) * 25, w, () -> MarkAIClient.groupAction(action));
+            command.setTooltip(Tooltip.create(tr("markai.hub.group_command_hint")));
+            groupButtons.add(command);
         }
     }
     private void initChat() {
@@ -149,6 +190,13 @@ public final class CompanionHubScreen extends Screen {
         }
         if (send!=null) send.active=MarkAIClient.available() && ClientCompanionState.bool(state().group(),"can_chat",false) && NetworkRules.chat(input.getValue());
         if (cancel!=null) cancel.active=MarkAIClient.available() && ClientCompanionState.bool(state().group(),"thinking",false);
+        for (int i=0;i<groupButtons.size();i++) {
+            String action = GROUP_COMMANDS.get(groupOffset * groupColumns() + i);
+            boolean compatible = !requiresWolf(action) || hasWolfCompanion();
+            groupButtons.get(i).active = MarkAIClient.available() && !state().companions().isEmpty() && compatible;
+            groupButtons.get(i).setTooltip(Tooltip.create(tr(compatible
+                ? "markai.hub.group_command_hint" : "markai.hub.group_wolf_only_hint")));
+        }
         for (int i=0;i<settingsButtons.size();i++) {
             String key=SETTINGS.get(settingsOffset+i), field=settingField(key);
             JsonObject source=key.startsWith("all:")?state().commonSettings():state().group();
@@ -173,7 +221,7 @@ public final class CompanionHubScreen extends Screen {
             if (requestedId.equals(state().companionId())) { MarkAIClient.show(requestedTab,false); return; }
             if (System.nanoTime()-requestedAt>2_000_000_000L) { requestedId=""; clearWidgets(); init(); }
         }
-        if (tab==Tab.COMPANIONS && rosterSize!=state().companions().size()) { clearWidgets(); init(); }
+        if ((tab==Tab.COMPANIONS || tab==Tab.GROUP_COMMANDS) && rosterSize!=state().companions().size()) { clearWidgets(); init(); }
         updateButtons();
     }
     @Override public boolean keyPressed(KeyEvent event) {
@@ -184,6 +232,7 @@ public final class CompanionHubScreen extends Screen {
         if (vertical!=0 && x>=left && x<=left+panelWidth && y>=contentTop && y<contentBottom) {
             int delta=vertical>0?-1:1;
             if (tab==Tab.CHAT) chatScroll=Math.max(0,chatScroll+delta*3);
+            else if (tab==Tab.GROUP_COMMANDS) { groupOffset=Math.max(0,Math.min(Math.max(0,groupRows()-visibleGroupRows()),groupOffset+delta)); clearWidgets(); init(); }
             else if (tab==Tab.COMPANIONS) { rosterOffset=Math.max(0,Math.min(Math.max(0,state().companions().size()-visibleCards()),rosterOffset+delta*columns())); clearWidgets(); init(); }
             else { settingsOffset=Math.max(0,Math.min(SETTINGS.size()-settingSlots(),settingsOffset+delta)); clearWidgets(); init(); }
             return true;
@@ -196,7 +245,11 @@ public final class CompanionHubScreen extends Screen {
         graphics.outline(left,top,panelWidth,panelHeight,0xFF426152);
         graphics.text(font,font.plainSubstrByWidth(title.getString(),panelWidth-100),left+44,top+14,WHITE);
         switch(tab) {
-            case COMPANIONS -> drawRoster(graphics);
+            case COMPANIONS -> drawRoster(graphics, mouseX, mouseY);
+            case GROUP_COMMANDS -> {
+                graphics.text(font,font.plainSubstrByWidth(label("markai.hub.group_commands_hint"),panelWidth-28),left+14,contentTop+2,MUTED);
+                if (groupRows()>visibleGroupRows()) graphics.text(font,label("markai.hub.group_commands_scroll"),left+14,contentBottom-12,MUTED);
+            }
             case CHAT -> drawChat(graphics);
             case SETTINGS -> graphics.text(font,font.plainSubstrByWidth(label("markai.hub.settings_hint"),panelWidth-28),left+14,contentTop+1,MUTED);
         }
@@ -210,23 +263,30 @@ public final class CompanionHubScreen extends Screen {
         graphics.text(font,font.plainSubstrByWidth(status,panelWidth-24),left+12,top+panelHeight-18,state().errorNotice()?0xFFFFA1A1:MUTED);
         super.extractRenderState(graphics,mouseX,mouseY,partialTick);
     }
-    private void drawRoster(GuiGraphicsExtractor graphics) {
+    private void drawRoster(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         graphics.text(font,font.plainSubstrByWidth(label("markai.hub.roster_hint"),panelWidth-28),left+14,contentTop+1,MUTED);
-        if (state().companions().isEmpty()) { graphics.text(font,tr("markai.hub.empty"),left+14,contentTop+25,MUTED); return; }
+        if (state().companions().isEmpty()) { graphics.text(font,font.plainSubstrByWidth(label("markai.hub.empty"),panelWidth-28),left+14,contentTop+25,MUTED); graphics.text(font,font.plainSubstrByWidth(label("markai.hub.taming_hint"),panelWidth-28),left+14,contentTop+40,MUTED); return; }
         for (int i=0;i<visibleCards() && i+rosterOffset<state().companions().size();i++) {
             JsonObject member=state().companions().get(i+rosterOffset).getAsJsonObject();
-            int x=left+14+(i%columns())*(cardWidth()+8),y=contentTop+14+(i/columns())*72,w=cardWidth();
+            int x=left+14+(i%columns())*(cardWidth()+8),y=contentTop+14+(i/columns())*96,w=cardWidth();
             boolean selected=ClientCompanionState.string(member,"id","").equals(state().companionId());
-            graphics.fill(x,y,x+w,y+66,selected?0xFF263F38:0xFF202E31); graphics.outline(x,y,w,66,selected?0xFF7BB395:0xFF3C5350);
+            graphics.fill(x,y,x+w,y+90,selected?0xFF263F38:0xFF202E31); graphics.outline(x,y,w,90,selected?0xFF7BB395:0xFF3C5350);
             String name=ClientCompanionState.string(member,"name","Mark");
-            graphics.text(font,font.plainSubstrByWidth((selected?"● ":"")+name,w-82),x+7,y+6,ACCENT);
+            String uuid=ClientCompanionState.string(member,"entity_uuid","");
+            var entity=MarkAIClient.preview(uuid);
+            if (entity!=null) InventoryScreen.extractEntityInInventoryFollowsMouse(graphics,x+4,y+20,x+55,y+65,26,0.0F,mouseX,mouseY,entity);
+            else graphics.text(font,font.plainSubstrByWidth(label("markai.ui.not_loaded"),48),x+5,y+39,MUTED);
+            graphics.text(font,font.plainSubstrByWidth((selected?"● ":"")+name,w-150),x+61,y+8,ACCENT);
+            String species=ClientCompanionState.string(member,"species","minecraft:wolf");
+            String speciesKey=isChickenSpecies(species)?"chicken":"wolf";
+            graphics.text(font,font.plainSubstrByWidth(label("markai.species."+speciesKey),w-150),x+61,y+21,MUTED);
             String health=String.format(Locale.ROOT,"%.0f / %.0f",ClientCompanionState.number(member,"health",0),ClientCompanionState.number(member,"max_health",40));
             String activity=CompanionScreen.localizedState("activity",ClientCompanionState.string(member,"activity","IDLE"));
-            graphics.text(font,font.plainSubstrByWidth(health+" · "+activity,w-14),x+7,y+19,MUTED);
-            int bar=w-14; double max=ClientCompanionState.number(member,"max_health",40);
+            graphics.text(font,font.plainSubstrByWidth(health+" · "+activity,w-150),x+61,y+34,MUTED);
+            int bar=Math.max(12,w-150); double max=ClientCompanionState.number(member,"max_health",40);
             double healthValue=ClientCompanionState.number(member,"health",0)/Math.max(1,max);
-            graphics.fill(x+7,y+32,x+7+bar,y+35,0xFF152322);
-            graphics.fill(x+7,y+32,x+7+(int)(bar*Math.clamp(healthValue,0,1)),y+35,0xFF8AC6A0);
+            graphics.fill(x+61,y+47,x+61+bar,y+50,0xFF152322);
+            graphics.fill(x+61,y+47,x+61+(int)(bar*Math.clamp(healthValue,0,1)),y+50,0xFF8AC6A0);
         }
     }
     private record ChatLine(FormattedCharSequence text,int color) {}

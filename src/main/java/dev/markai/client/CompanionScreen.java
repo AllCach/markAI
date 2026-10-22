@@ -48,6 +48,11 @@ public final class CompanionScreen extends Screen {
     private static Component tr(String key) { return Component.translatable(key); }
     private static String label(String key) { return tr(key).getString(); }
     private ClientCompanionState state() { return MarkAIClient.STATE; }
+    private boolean isChickenSelected() {
+        String species = state().string("species", "minecraft:wolf");
+        return species.equals("chicken") || species.equals("minecraft:chicken");
+    }
+    private boolean isSelectedDead() { return state().bool("dead", false); }
 
     @Override protected void init() {
         if (!companionId.equals(state().companionId())) resetCompanionDrafts();
@@ -56,7 +61,7 @@ public final class CompanionScreen extends Screen {
         panelHeight = Math.max(190, Math.min(470, height - 16));
         if (quick) { panelWidth = Math.min(panelWidth, 400); panelHeight = Math.min(panelHeight, 250); }
         left = (width - panelWidth) / 2; top = (height - panelHeight) / 2;
-        contentTop = top + (quick ? 42 : 66); contentBottom = top + panelHeight - 34;
+        contentTop = top + (quick ? 42 : panelWidth < 440 ? 82 : 66); contentBottom = top + panelHeight - 34;
         input = null; rename = null; sendButton = null; deleteButton = null; renameButton = null;
         previousCard = null; nextCard = null;
         memoryButtons.clear(); settingButtons.clear(); traitButtons.clear();
@@ -68,10 +73,16 @@ public final class CompanionScreen extends Screen {
         nextCompanion = addButton("›", left + panelWidth - 56, top + 8, 20, () -> selectCompanion(1));
         nextCompanion.setTooltip(Tooltip.create(tr("markai.ui.next_companion")));
         if (!quick) {
-            int tabWidth = (panelWidth - 20) / Tab.values().length;
+            int columns = panelWidth < 440 ? 3 : Tab.values().length;
             for (Tab destination : Tab.values()) {
+                int row = destination.ordinal() / columns;
+                int column = destination.ordinal() % columns;
+                int columnsInRow = row == 0 ? columns : Tab.values().length - columns;
+                int tabWidth = (panelWidth - 20 - (columnsInRow - 1) * 2) / columnsInRow;
+                int x = left + 10 + column * (tabWidth + 2);
+                if (row > 0) x = left + (panelWidth - (columnsInRow * tabWidth + (columnsInRow - 1) * 2)) / 2 + column * (tabWidth + 2);
                 Button button = addButton(label("markai.tab." + destination.name().toLowerCase(Locale.ROOT)),
-                    left + 10 + destination.ordinal() * tabWidth, top + 34, tabWidth - 2, () -> changeTab(destination));
+                    x, top + 34 + row * 23, tabWidth, () -> changeTab(destination));
                 button.active = destination != tab;
             }
         }
@@ -120,9 +131,15 @@ public final class CompanionScreen extends Screen {
         if (MarkAIClient.select(id)) { requestedCompanion = id; selectionRequestedAt = System.nanoTime(); updateLabels(); }
     }
     /** On narrow windows retain the original compact profile instead of clipping the controls. */
-    private boolean showCarousel() { return panelWidth >= 350 && profilePreviewBottom() - contentTop >= 165; }
+    private boolean showCarousel() { return NetworkRules.companionId(state().companionId()) && panelWidth >= 350 && profilePreviewBottom() - contentTop >= 165; }
+    private int profileActionColumns() { return panelWidth >= 420 ? 4 : 2; }
+    private int profileActionCount() {
+        if (!NetworkRules.companionId(state().companionId())) return 0;
+        return isSelectedDead() ? 1 : 2;
+    }
     private int profilePreviewBottom() {
-        int rows = (4 + profileActionColumns() - 1) / profileActionColumns();
+        int columns = profileActionColumns();
+        int rows = (profileActionCount() + columns - 1) / columns;
         return contentBottom - rows * 23 - 5;
     }
     private int carouselHeight() {
@@ -160,19 +177,32 @@ public final class CompanionScreen extends Screen {
             previousCard.setTooltip(Tooltip.create(tr("markai.ui.previous_companion")));
             nextCard.setTooltip(Tooltip.create(tr("markai.ui.next_companion")));
         }
-        String[] actions = {"spawn", "tame", "summon", "dismiss"};
-        int columns = profileActionColumns();
+        boolean hasSelection = NetworkRules.companionId(state().companionId());
+        // Profile is for managing a tamed/registered companion, not creating one.
+        String[] actions = !hasSelection ? new String[0]
+            : isSelectedDead() ? new String[] {"spawn"} : new String[] {"summon", "dismiss"};
+        if (actions.length == 0) return;
+        int columns = Math.min(profileActionColumns(), actions.length);
         int rows = (actions.length + columns - 1) / columns;
         int w = (panelWidth - 20 - (columns - 1) * 3) / columns;
         int y = contentBottom - (rows * 23 - 3);
         for (int i = 0; i < actions.length; i++) {
             String action = actions[i];
-            addButton(label("markai.command." + action), left + 10 + (i % columns) * (w + 3), y + (i / columns) * 23, w, () -> command(action));
+            String key = action.equals("spawn") && isSelectedDead() ? "markai.command.respawn" : "markai.command." + action;
+            int row = i / columns, column = i % columns;
+            int itemsInRow = Math.min(columns, actions.length - row * columns);
+            int rowWidth = itemsInRow * w + (itemsInRow - 1) * 3;
+            int rowLeft = left + (panelWidth - rowWidth) / 2;
+            Button button = addButton(label(key), rowLeft + column * (w + 3), y + row * 23, w, () -> command(action));
+            if (action.equals("summon")) button.setTooltip(Tooltip.create(tr("markai.command.hint.summon")));
+            if (action.equals("dismiss")) button.setTooltip(Tooltip.create(tr("markai.command.hint.dismiss")));
         }
     }
-    private int profileActionColumns() { return panelWidth >= 420 ? 4 : 2; }
     private void initCommands() {
-        String[] actions = {"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory", "attack", "collect", "stop"};
+        if (!NetworkRules.companionId(state().companionId())) return;
+        String[] actions = isChickenSelected()
+            ? new String[] {"follow", "come", "stay", "rest", "stop", "summon", "dismiss"}
+            : new String[] {"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory", "attack", "collect", "stop"};
         int availableHeight = contentBottom - contentTop;
         int maxRows = Math.max(1, (availableHeight + 3) / 23);
         int columns = Math.max(panelWidth >= 550 ? 4 : 2, (actions.length + maxRows - 1) / maxRows);
@@ -181,8 +211,10 @@ public final class CompanionScreen extends Screen {
         int gapY = rows == 1 ? 0 : Math.min(32, (availableHeight - 20) / (rows - 1));
         for (int i = 0; i < actions.length; i++) {
             String action = actions[i];
-            addButton(label("markai.command." + action), left + 10 + (i % columns) * (w + 3), contentTop + (i / columns) * gapY,
+            Button button = addButton(label("markai.command." + action),
+                left + 10 + (i % columns) * (w + 3), contentTop + (i / columns) * gapY,
                 w, () -> command(action));
+            if (NetworkRules.groupAction(action)) button.setTooltip(Tooltip.create(tr("markai.command.hint.group_modifier")));
         }
     }
     private void initDialogue() {
@@ -332,11 +364,12 @@ public final class CompanionScreen extends Screen {
         String name = state().string("name", "Mark");
         int index = companionIndex();
         String selected = (index < 0 ? "" : (index + 1) + "/" + state().companions().size() + " ") + name;
+        if (panelWidth >= 390) selected += " · " + label("markai.species." + (isChickenSelected() ? "chicken" : "wolf"));
         if (panelWidth >= 550) selected += " · " + localizedState("activity", state().string("activity", "IDLE"));
         graphics.text(font, font.plainSubstrByWidth(selected, panelWidth - 202), left + 116, top + 14, ACCENT);
         switch (tab) {
-            case PROFILE -> drawProfile(graphics, mouseX, mouseY);
-            case COMMANDS -> { }
+            case PROFILE -> { if (NetworkRules.companionId(state().companionId())) drawProfile(graphics, mouseX, mouseY); else drawTamingGuide(graphics); }
+            case COMMANDS -> { if (!NetworkRules.companionId(state().companionId())) drawTamingGuide(graphics); }
             case DIALOGUE -> drawDialogue(graphics);
             case MEMORIES -> drawMemories(graphics);
             case SETTINGS -> {
@@ -350,6 +383,14 @@ public final class CompanionScreen extends Screen {
             state().errorNotice() ? 0xFFFFA1A1 : MUTED);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
+    private void drawTamingGuide(GuiGraphicsExtractor graphics) {
+        graphics.text(font, label("markai.ui.taming_guide_title"), left + 16, contentTop + 18, ACCENT);
+        List<String> instructions = List.of(label("markai.ui.taming_guide_wolf"),
+            label("markai.ui.taming_guide_chicken"), label("markai.ui.taming_guide_notes"));
+        drawWrapped(graphics, instructions, left + 16, contentTop + 40, panelWidth - 32,
+            Math.max(24, contentBottom - contentTop - 44), 0, WHITE);
+    }
+
     private void drawProfile(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         int bottom = profilePreviewBottom();
         if (showCarousel()) {
@@ -360,9 +401,9 @@ public final class CompanionScreen extends Screen {
         }
         int previewWidth = panelWidth < 400 ? 80 : 130;
         graphics.fill(left + 10, contentTop, left + 10 + previewWidth, bottom, 0x8834493D);
-        var wolf = MarkAIClient.preview();
-        if (wolf != null) InventoryScreen.extractEntityInInventoryFollowsMouse(graphics, left + 12, contentTop,
-            left + previewWidth + 8, bottom, Math.max(20, Math.min(44, (bottom - contentTop) / 2)), 0.0F, mouseX, mouseY, wolf);
+        var entity = MarkAIClient.preview();
+        if (entity != null) InventoryScreen.extractEntityInInventoryFollowsMouse(graphics, left + 12, contentTop,
+            left + previewWidth + 8, bottom, Math.max(20, Math.min(44, (bottom - contentTop) / 2)), 0.0F, mouseX, mouseY, entity);
         else graphics.text(font, tr("markai.ui.not_loaded"), left + 13, contentTop + 15, MUTED);
         int x = left + previewWidth + 20;
         drawProfileDetails(graphics, x, contentTop + 3, panelWidth - previewWidth - 32, bottom - contentTop - 6);
@@ -393,12 +434,12 @@ public final class CompanionScreen extends Screen {
         String name = ClientCompanionState.string(companion, "name", "—");
         String activity = ClientCompanionState.string(companion, "activity", "UNLOADED");
         graphics.text(font, font.plainSubstrByWidth(name, w - 12), x + 6, y + 7, selected ? ACCENT : WHITE);
-        var wolf = MarkAIClient.preview(ClientCompanionState.string(companion, "entity_uuid", ""));
-        if (wolf != null) {
+        var entity = MarkAIClient.preview(ClientCompanionState.string(companion, "entity_uuid", ""));
+        if (entity != null) {
             int size = selected ? Math.max(24, Math.min(54, (h - 52) / 2))
                 : Math.max(16, Math.min(27, (h - 52) / 3));
             InventoryScreen.extractEntityInInventoryFollowsMouse(graphics, x + 3, y + 20,
-                x + w - 3, y + h - 52, size, 0.0F, mouseX, mouseY, wolf);
+                x + w - 3, y + h - 52, size, 0.0F, mouseX, mouseY, entity);
         } else {
             graphics.text(font, font.plainSubstrByWidth(label("markai.ui.not_loaded"), w - 12),
                 x + 6, y + Math.max(24, (h - 48) / 2), MUTED);

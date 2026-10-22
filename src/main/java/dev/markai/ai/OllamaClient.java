@@ -353,9 +353,34 @@ public final class OllamaClient implements LlmProvider {
             if (!statements.isEmpty()) relevantFacts += "\nТочные слова игрока, подходящие для воспоминания: " + statements
                 + ". В ответе на вопрос о плане повтори известные конкретные материалы и детали из цитаты, без их замены общими словами.";
         }
-        // Keep persona and current state in one explicit system slot across model templates.
+        // Species comes from the persisted companion entity type, never from a shared wolf-only template.
+        JsonObject state = context.getAsJsonObject();
+        JsonObject companion = state.has("companion") && state.get("companion").isJsonObject()
+            ? state.getAsJsonObject("companion") : new JsonObject();
+        String species = companion.has("type") && companion.get("type").isJsonPrimitive()
+            ? companion.get("type").getAsString() : "minecraft:wolf";
+        String speciesDirective;
+        if ("minecraft:chicken".equals(species)) {
+            speciesDirective = """
+                \nОБЯЗАТЕЛЬНОЕ ПРАВИЛО ИДЕНТИЧНОСТИ (важнее любых общих примеров выше):
+                companion.type = minecraft:chicken. Ты курица-компаньон, а НЕ волк.
+                Если CURRENT_GAME_STATE.roleplay_identity задан, соблюдай эту роль; например,
+                «петух» означает, что игрок попросил отыгрывать петуха. Иначе называй себя курицей.
+                Не называй себя волком или волчонком, не говори о волчьем теле, шерсти, лае,
+                укусе или волчьих боевых способностях. Если выше в шаблоне упоминается волк,
+                это общий шаблон для другого вида и к тебе не относится. Вид и имя бери из
+                CURRENT_GAME_STATE.companion. В групповом чате не копируй вид другого компаньона.
+                """;
+        } else {
+            speciesDirective = """
+                \nОБЯЗАТЕЛЬНОЕ ПРАВИЛО ИДЕНТИЧНОСТИ:
+                companion.type = minecraft:wolf. Ты волк-компаньон. Не переноси на себя вид
+                другого участника общего чата. Вид и имя бери из CURRENT_GAME_STATE.companion.
+                """;
+        }
+        // Keep persona, species identity, and current state in one explicit system slot across model templates.
         messages.add(message("system", (ambient ? AMBIENT_SYSTEM_PROMPT : group ? GROUP_SYSTEM_PROMPT : SYSTEM_PROMPT)
-            + "\nCURRENT_GAME_STATE: " + context + "\nrequested_action=" + requestedAction + relevantFacts
+            + speciesDirective + "\nCURRENT_GAME_STATE: " + context + "\nrequested_action=" + requestedAction + relevantFacts
             + (ambient ? "\nПовод для самостоятельной реплики: " + playerMessage
                 : group ? "\nТекущий запрос находится в последнем user. Соблюдай group_turn и говори только за companion.name."
                 : "\nПоследнее сообщение игрока находится в последнем user после истории; отвечай на него, не продолжай собственную предыдущую фразу.")));

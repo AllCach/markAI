@@ -16,7 +16,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.entity.animal.wolf.Wolf;
+import net.minecraft.world.entity.LivingEntity;
 
 @Environment(EnvType.CLIENT)
 public final class MarkAIClient implements ClientModInitializer {
@@ -25,7 +25,7 @@ public final class MarkAIClient implements ClientModInitializer {
     private static final java.util.Map<KeyMapping, String> commandKeys = new java.util.LinkedHashMap<>();
     private static final java.util.Set<KeyMapping> commandKeysDown = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
     private static int ticks;
-    private static Wolf preview;
+    private static LivingEntity preview;
     private static boolean connected;
     private static boolean keyMigrationChecked;
     private static long lastCycleAt;
@@ -40,10 +40,11 @@ public final class MarkAIClient implements ClientModInitializer {
         commandKey("attack", InputConstants.KEY_R, category);
         commandKey("collect", InputConstants.KEY_J, category);
         commandKey("stop", InputConstants.KEY_K, category);
-        commandKey("rest", InputConstants.KEY_N, category);
-        commandKey("come", InputConstants.KEY_M, category);
-        commandKey("follow", InputConstants.KEY_O, category);
-        commandKey("stay", InputConstants.KEY_X, category);
+        commandKey("come", InputConstants.KEY_B, category);
+        commandKey("follow", InputConstants.KEY_M, category);
+        commandKey("stay", InputConstants.KEY_N, category);
+        commandKey("rest", InputConstants.KEY_O, category);
+        commandKey("sethome", InputConstants.KEY_P, category);
         commandKey("inventory", InputConstants.KEY_I, category);
         ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.Snapshot.TYPE, (payload, context) -> {
             STATE.update(payload.json());
@@ -112,7 +113,7 @@ public final class MarkAIClient implements ClientModInitializer {
                 String line = client.font.plainSubstrByWidth(popup, Math.max(80, graphics.guiWidth() - 48));
                 int width = Math.min(graphics.guiWidth() - 24, client.font.width(line) + 24);
                 int x = (graphics.guiWidth() - width) / 2;
-                int y = Math.max(48, Math.min(graphics.guiHeight() - 64, graphics.guiHeight() / 3));
+                int y = 8;
                 int border = STATE.popupError() ? 0xFFE08A8A : 0xFF77B995;
                 graphics.fill(x, y, x + width, y + 28, 0xE0182528);
                 graphics.outline(x, y, width, 28, border);
@@ -127,9 +128,9 @@ public final class MarkAIClient implements ClientModInitializer {
 
     private static void migrateLegacyKeyDefaults(Minecraft client) {
         keyMigrationChecked = true;
-        boolean changed = remapDefault(lookupCommandKey("come"), "key.keyboard.b", "key.keyboard.m")
-            | remapDefault(lookupCommandKey("follow"), "key.keyboard.m", "key.keyboard.o")
-            | remapDefault(lookupCommandKey("stay"), "key.keyboard.n", "key.keyboard.x");
+        boolean changed = remapDefault(lookupCommandKey("come"), "key.keyboard.m", "key.keyboard.b")
+            | remapDefault(lookupCommandKey("follow"), "key.keyboard.o", "key.keyboard.m")
+            | remapDefault(lookupCommandKey("stay"), "key.keyboard.x", "key.keyboard.n");
         if (changed) client.options.save();
     }
 
@@ -160,7 +161,7 @@ public final class MarkAIClient implements ClientModInitializer {
     /** Ctrl applies one supported command to the entire owner roster, on the server. */
     public static void groupAction(String action) {
         if (!NetworkRules.groupAction(action)) {
-            STATE.notice("error", "Эта команда доступна только для одного компаньона.");
+            STATE.notice("error", Component.translatable("markai.ui.group_only").getString());
             return;
         }
         send(new CompanionNetwork.Action("all:" + action));
@@ -215,17 +216,17 @@ public final class MarkAIClient implements ClientModInitializer {
         STATE.notice("error", Component.translatable("markai.ui.no_server").getString());
         return false;
     }
-    public static Wolf preview() { return preview(STATE.string("entity_uuid", "")); }
+    public static LivingEntity preview() { return preview(STATE.string("entity_uuid", "")); }
 
-    /** Only resolves wolves already present in the client world; never fabricates a preview. */
-    public static Wolf preview(String entityUuid) {
+    /** Resolves the selected companion's real living entity, including non-wolf species. */
+    public static LivingEntity preview(String entityUuid) {
         var client = Minecraft.getInstance();
         if (client.level == null || entityUuid == null || entityUuid.isBlank()) return null;
         if (preview != null && preview.isAlive() && !preview.isRemoved() && preview.level() == client.level
                 && preview.getUUID().toString().equals(entityUuid)) return preview;
         for (var entity : client.level.entitiesForRendering()) {
-            if (entity instanceof Wolf wolf && wolf.isAlive() && !wolf.isRemoved()
-                    && wolf.getUUID().toString().equals(entityUuid)) return wolf;
+            if (entity instanceof LivingEntity living && living.isAlive() && !living.isRemoved()
+                    && living.getUUID().toString().equals(entityUuid)) return living;
         }
         return null;
     }
@@ -233,11 +234,11 @@ public final class MarkAIClient implements ClientModInitializer {
         if (client.level == null) { preview = null; return; }
         String uuid = STATE.string("entity_uuid", "");
         int id = (int) STATE.number("entity_id", -1);
-        if (id >= 0 && client.level.getEntity(id) instanceof Wolf wolf && wolf.getUUID().toString().equals(uuid)) { preview = wolf; return; }
+        if (id >= 0 && client.level.getEntity(id) instanceof LivingEntity living && living.getUUID().toString().equals(uuid)) { preview = living; return; }
         preview = null;
         if (uuid.isBlank()) return;
         for (var entity : client.level.entitiesForRendering()) {
-            if (entity instanceof Wolf wolf && wolf.getUUID().toString().equals(uuid)) { preview = wolf; return; }
+            if (entity instanceof LivingEntity living && living.getUUID().toString().equals(uuid)) { preview = living; return; }
         }
     }
 }

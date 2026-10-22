@@ -15,6 +15,15 @@ import net.fabricmc.api.Environment;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.animal.chicken.Chicken;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.impl.client.gametest.util.WindowHooks;
 import net.minecraft.client.KeyMapping;
@@ -340,7 +349,7 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                 enterFullscreen(context,"Всем привет, как настроение?");
                 for(int scale:List.of(2,4)) {
                     setGuiScale(context,scale);
-                    for(String destination:List.of("companions","settings","chat")) {
+                    for(String destination:List.of("companions","group_commands","settings","chat")) {
                         context.clickScreenButton("markai.hub.tab."+destination);context.waitTicks(1);
                         assertLayout(context,windowChecks,"hub-fullscreen-scale"+scale+"-"+destination);
                         context.takeScreenshot("markai-hub-"+destination+"-scale"+scale);
@@ -451,6 +460,91 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                     .map(widget->((Button)widget).getMessage().getString()).noneMatch(label->label.equals(text("markai.hub.removing"))),
                     "A completed removal leaves no stuck pending button in the roster"));
                 context.takeScreenshot("markai-hub-after-remove");
+
+                context.runOnClient(client -> check(KeyMapping.get("key.markai.sethome") != null,
+                    "Set-home must be registered as a configurable Minecraft key mapping"));
+                AtomicReference<String> chickenId = new AtomicReference<>();
+                server.runOnServer(instance -> {
+                    ServerPlayer owner = instance.getPlayerList().getPlayer(ownerId);
+                    ServerLevel level = (ServerLevel) owner.level();
+                    Chicken wild = EntityTypes.CHICKEN.create(level, EntitySpawnReason.COMMAND);
+                    if (wild == null) throw new AssertionError("Minecraft must create a wild test chicken");
+                    wild.setPos(owner.getX() + 2, owner.getY(), owner.getZ() + 2);
+                    if (!level.addFreshEntity(wild)) throw new AssertionError("Wild test chicken must enter the world");
+                    owner.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.WHEAT_SEEDS));
+                    owner.setShiftKeyDown(false);
+                    InteractionResult vanillaFeeding = UseEntityCallback.EVENT.invoker()
+                        .interact(owner, level, InteractionHand.MAIN_HAND, wild, null);
+                    check(vanillaFeeding == InteractionResult.PASS,
+                        "Normal seed feeding without sneak must remain vanilla");
+                    owner.setShiftKeyDown(true);
+                    InteractionResult result = UseEntityCallback.EVENT.invoker()
+                        .interact(owner, level, InteractionHand.MAIN_HAND, wild, null);
+                    owner.setShiftKeyDown(false);
+                    owner.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+                    check(result == InteractionResult.CONSUME, "Shift + right-click with seeds must intercept chicken taming");
+                    try {
+                        MarkAIMod.Companion adopted = TestCompanions.registry(mod).byEntity(wild.getUUID());
+                        check(adopted != null && adopted.species.equals("minecraft:chicken"),
+                            "Taming must register the actual wild chicken as the owner's companion");
+                        chickenId.set(adopted.id.toString());
+                    } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
+                    instance.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark ai off");
+                });
+                context.waitFor(client -> MarkAIClient.STATE.companions().size() == 2
+                    && MarkAIClient.STATE.companions().toString().contains("minecraft:chicken"));
+                context.runOnClient(client -> check(MarkAIClient.select(chickenId.get()),
+                    "The chicken adopted with seeds must be selectable in the companion UI"));
+                connection.waitForServerboundPackets();
+                context.waitFor(client -> MarkAIClient.STATE.companionId().equals(chickenId.get()));
+                context.takeScreenshot("markai-hub-with-tamed-chicken");
+
+                closeWithEscape(context);
+                context.getInput().pressKey(KeyMapping.get("key.markai.open"));
+                context.waitForScreen(CompanionScreen.class);
+                context.waitFor(client -> MarkAIClient.STATE.string("species", "").equals("minecraft:chicken"));
+                context.runOnClient(client -> {
+                    List<String> labels = client.gui.screen().children().stream().filter(widget -> widget instanceof Button)
+                        .map(widget -> ((Button) widget).getMessage().getString()).toList();
+                    check(!labels.contains(text("markai.command.tame")),
+                        "Chicken profile must not offer wolf taming");
+                    check(!labels.contains(text("markai.command.spawn")),
+                        "A tamed Chicken profile must not offer wolf spawning");
+                    check(labels.contains(text("markai.command.summon")) && labels.contains(text("markai.command.dismiss")),
+                        "A tamed Chicken profile must expose companion-management actions");
+                });
+                context.takeScreenshot("markai-chicken-profile");
+                context.clickScreenButton("markai.tab.commands");
+                context.runOnClient(client -> {
+                    List<String> labels = client.gui.screen().children().stream().filter(widget -> widget instanceof Button)
+                        .map(widget -> ((Button) widget).getMessage().getString()).toList();
+                    for (String action : List.of("follow", "come", "stay", "rest", "stop", "summon", "dismiss"))
+                        check(labels.contains(text("markai.command." + action)), "Chicken command tab must include " + action);
+                    for (String action : List.of("attack", "collect", "inventory", "wander", "home", "sethome", "investigate"))
+                        check(!labels.contains(text("markai.command." + action)), "Chicken command tab must exclude wolf-only " + action);
+                });
+                context.takeScreenshot("markai-chicken-commands");
+
+                context.clickScreenButton("markai.hub.open_short");
+                context.waitForScreen(CompanionHubScreen.class);
+                context.clickScreenButton("markai.hub.tab.group_commands");
+                context.runOnClient(client -> {
+                    List<String> labels = client.gui.screen().children().stream().filter(widget -> widget instanceof Button)
+                        .map(widget -> ((Button) widget).getMessage().getString()).toList();
+                    check(labels.contains(text("markai.command.group_sethome")),
+                        "The shared commands tab must expose Set Home for groups containing wolves");
+                });
+                pace(context);
+                context.clickScreenButton(text("markai.command.group_sethome"));
+                connection.waitForServerboundPackets();
+                server.waitFor(instance -> {
+                    try {
+                        return TestCompanions.registry(mod).owned(ownerId).stream()
+                            .filter(c -> !c.species.equals("minecraft:chicken"))
+                            .anyMatch(c -> c.living.home != null);
+                    } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
+                });
+                context.takeScreenshot("markai-group-sethome-with-chicken");
             } finally {
                 try {
                     restoreWindow(context, originalWindow);
