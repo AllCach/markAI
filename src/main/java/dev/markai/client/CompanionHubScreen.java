@@ -134,7 +134,8 @@ public final class CompanionHubScreen extends Screen {
         for (int i = start; i < end; i++) {
             String action = GROUP_COMMANDS.get(i);
             int local = i - start;
-            Button command = button(label("markai.command." + action),
+            String commandLabel = action.equals("sethome") ? "markai.command.group_sethome" : "markai.command." + action;
+            Button command = button(label(commandLabel),
                 left + 14 + (local % columns) * (w + 6),
                 contentTop + 25 + (local / columns) * 25, w, () -> MarkAIClient.groupAction(action));
             command.setTooltip(Tooltip.create(tr("markai.hub.group_command_hint")));
