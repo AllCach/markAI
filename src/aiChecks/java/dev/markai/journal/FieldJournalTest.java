@@ -1,6 +1,11 @@
 package dev.markai.journal;
 
 import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.util.Map;
 
 /** Deterministic checks for bounded research progression and player notes. */
 public final class FieldJournalTest {
@@ -12,6 +17,7 @@ public final class FieldJournalTest {
         notesAreBoundedAndEditable();
         snapshotsCannotMutateJournal();
         inputAndStorageLimitsAreEnforced();
+        persistenceRoundTripAndValidation();
         System.out.println("FieldJournalTest: " + checks + " checks passed");
     }
 
@@ -91,6 +97,46 @@ public final class FieldJournalTest {
             "Species beyond the global cap are rejected");
         check(journal.knowledge("markai:unknown_1", FieldJournal.Topic.OVERVIEW) == null,
             "Unknown species do not expose fabricated facts");
+    }
+
+    private static void persistenceRoundTripAndValidation() {
+        try {
+            Path directory = Files.createTempDirectory("markai-field-journal-");
+            Path path = directory.resolve("field-journal.json");
+            UUID owner = UUID.randomUUID();
+            FieldJournal original = new FieldJournal();
+            UUID wolf = UUID.randomUUID();
+            original.observe("minecraft:wolf", wolf, "minecraft:taiga", 123);
+            original.addNote("minecraft:wolf", "Pack tracks near the ridge", 124);
+            FieldJournalStore store = new FieldJournalStore();
+            store.write(path, Map.of(owner, original));
+            Map<UUID, FieldJournal> loaded = store.read(path);
+            check(loaded.size() == 1 && loaded.containsKey(owner), "Owner-scoped journal survives round-trip");
+            FieldJournal.Entry entry = loaded.get(owner).entry("minecraft:wolf");
+            check(entry.observationCount == 1 && entry.observedEntityIds.contains(wolf.toString()),
+                "Unique entity identity survives round-trip");
+            check(entry.biomes.contains("minecraft:taiga") && entry.notes.size() == 1,
+                "Biome research and personal notes survive round-trip");
+            check(loaded.get(owner).addNote("minecraft:wolf", "Second note", 125),
+                "Restored note IDs continue without collision");
+
+            Files.writeString(path, "{\"schemaVersion\":99,\"owners\":{}}", StandardCharsets.UTF_8);
+            boolean rejected = false;
+            try { store.read(path); } catch (IOException expected) { rejected = true; }
+            check(rejected, "Unknown schema version is rejected");
+
+            Files.writeString(path, "not json", StandardCharsets.UTF_8);
+            rejected = false;
+            try { store.read(path); } catch (IOException expected) { rejected = true; }
+            check(rejected, "Malformed journal file is rejected");
+
+            Files.write(path, new byte[FieldJournalStore.MAX_BYTES + 1]);
+            rejected = false;
+            try { store.read(path); } catch (IOException expected) { rejected = true; }
+            check(rejected, "Oversized journal file is rejected");
+        } catch (Exception error) {
+            throw new AssertionError("Persistence checks failed", error);
+        }
     }
 
     private static void check(boolean condition, String message) {
