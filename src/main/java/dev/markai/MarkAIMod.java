@@ -382,7 +382,7 @@ public final class MarkAIMod implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> {
             var root = Commands.literal("mark").executes(ctx -> {
                 ctx.getSource().sendSuccess(() -> Component.literal(
-                    "/walk tame | attack | collect | stop | spawn [chicken] | follow | stay | come | rest | wander | sethome | home | summon | inventory | status | train <приём> | ask <текст> | ai on/off"), false);
+                    "/walk tame | attack | collect | stop | spawn | follow | stay | come | rest | wander | sethome | home | summon | inventory | status | train <приём> | ask <текст> | ai on/off"), false);
                 return 1;
             });
             for (String name : List.of("spawn", "respawn", "follow", "stay", "status", "skills", "forget", "bark", "come", "fetch",
@@ -401,8 +401,6 @@ public final class MarkAIMod implements ModInitializer {
             for (String mode : List.of("on", "off", "status"))
                 ai.then(Commands.literal(mode).executes(ctx -> aiCommand(ctx.getSource().getPlayerOrException(), mode)));
             root.then(ai);
-            root.then(Commands.literal("spawn").then(Commands.literal("chicken")
-                .executes(ctx -> command(ctx, "spawn_chicken"))));
             var registered = dispatcher.register(root);
             dispatcher.register(Commands.literal("walk").executes(registered.getCommand()).redirect(registered));
         });
@@ -425,7 +423,6 @@ public final class MarkAIMod implements ModInitializer {
             }
             return adoptWolf(owner, wolf);
         }
-        if (command.equals("spawn_chicken")) return spawnChicken(owner, c);
         if (c != null && CompanionSpecies.CHICKEN.id().equals(c.species)
                 && (command.equals("respawn") || command.equals("spawn"))) {
             if (!c.dead) {
