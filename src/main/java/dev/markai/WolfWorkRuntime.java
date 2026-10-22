@@ -4,7 +4,7 @@ import dev.markai.actions.ActionResult;
 import dev.markai.actions.CompanionCombatRules;
 import dev.markai.actions.CompanionSafety;
 import dev.markai.inventory.CompanionInventoryHolder;
-import dev.markai.inventory.DogInventory;
+import dev.markai.inventory.WolfInventory;
 import dev.markai.mixin.ItemEntityAccessor;
 import dev.markai.mixin.MobAccessor;
 import dev.markai.network.CompanionNetwork;
@@ -186,7 +186,7 @@ final class WolfWorkRuntime {
             job.level.getEntities(EntityTypeTest.forClass(ItemEntity.class), new AABB(job.origin, job.origin).inflate(job.radius),
                 candidate -> eligible(candidate, wolf, owner, job), candidates, 32);
             candidates.sort(Comparator.comparingDouble(wolf::distanceToSqr));
-            DogInventory inventory = inventory(wolf);
+            WolfInventory inventory = inventory(wolf);
             item = candidates.stream().filter(candidate -> inventory.canAddItem(candidate.getItem())).findFirst().orElse(null);
             if (item == null) {
                 // Vanilla Q-drops remain unpickable for 40 ticks; do not finish before that initial grace period.
@@ -280,7 +280,7 @@ final class WolfWorkRuntime {
         return thrower == null || thrower.getUUID().equals(owner.getUUID());
     }
 
-    private static DogInventory inventory(Wolf wolf) { return ((CompanionInventoryHolder) wolf).markai$inventory(); }
+    private static WolfInventory inventory(Wolf wolf) { return ((CompanionInventoryHolder) wolf).markai$inventory(); }
     private static boolean validOwner(MarkAIMod.Companion companion, Wolf wolf, ServerPlayer owner) {
         return wolf != null && owner != null && wolf.isAlive() && !wolf.isRemoved() && owner.isAlive() && !owner.isSpectator()
             && wolf.isTame() && wolf.level() instanceof ServerLevel && owner.level() == wolf.level()
