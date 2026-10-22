@@ -1,4 +1,4 @@
-# Companion species boundary — 0.11.0
+# Companion species boundary — 0.11.1
 
 This document describes the current multi-species implementation carried forward from the 0.10.5 integration branch. The code has been written through GitHub file operations; a local Gradle build and in-game validation have not yet been run.
 
@@ -10,9 +10,17 @@ This document describes the current multi-species implementation carried forward
 - `CompanionSpecies` defines explicit capabilities for Wolf and Chicken.
 - The existing Wolf path retains its combat, inventory, training and trick behavior.
 - Chicken/Mark has a separate minimal runtime: spawn, follow/stay/summon/cancel/remove, species-aware status, selected-companion handling, chat context and ambient dialogue.
-- Chicken does not inherit Wolf combat, inventory or wolf tricks. Wolf-only actions must be rejected for Chicken.
+- Chicken does not inherit Wolf combat, inventory or wolf tricks. The personal UI must hide wolf-only controls for Chicken, and server actions must not create a Wolf when `spawn` is invoked with a live Chicken selected.
 - Ambient Chicken dialogue uses a separate context and does not replay player chat history.
 - Ordinary wild chickens are not registered as MarkAI companions unless explicitly spawned/registered through the companion flow.
+
+## 0.11.1 UI and controls review
+
+- Species IDs use canonical values such as `minecraft:chicken`; client screens must compare canonical IDs rather than shortened display labels.
+- The Chicken profile offers only Chicken-supported commands, while the Wolf profile keeps Wolf-specific actions.
+- The shared owner panel has a dedicated group-orders tab. `P` sets the selected Wolf home, while `Ctrl+P` sets a home for every compatible loaded Wolf within the group command radius. Unsupported species are reported as skipped.
+- Key mappings are registered on the client, localized and configurable under Minecraft Controls. Group-compatible command buttons explain the Ctrl modifier.
+- In-game UI verification should cover Wolf and Chicken profiles, mixed group orders, GUI scales 2 and 4, and set-home execution.
 
 ## 0.11.0 acceptance criteria
 
