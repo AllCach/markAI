@@ -13,16 +13,20 @@ public final class NetworkRules {
         "attack", "collect", "stop", "come", "stay", "follow",
         "rest", "wander", "home", "sethome", "investigate");
 
+    private static final Set<String> TALENTS = Set.of("guardian", "hunter", "tracker", "nimble", "lookout", "evasive");
+
     private static final Set<String> TRAITS = Set.of("trait_loyalty", "trait_curiosity", "trait_caution", "trait_playfulness",
         "trait_sociability", "trait_independence", "trait_confidence", "trait_trust");
 
     private NetworkRules() {}
 
+    public static boolean talent(String talent) { return talent != null && TALENTS.contains(talent); }
+
     public static boolean groupAction(String action) {
         return action != null && GROUP_ACTIONS.contains(action);
     }
     public static boolean action(String action) {
-        return action != null && (ACTIONS.contains(action)
+        return action != null && (action.startsWith("talent_") && talent(action.substring(7)) || ACTIONS.contains(action)
             || action.startsWith("all:") && groupAction(action.substring(4)));
     }
     public static boolean chat(String message) {
