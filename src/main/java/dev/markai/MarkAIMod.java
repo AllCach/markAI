@@ -696,6 +696,30 @@ public final class MarkAIMod implements ModInitializer {
                 accepted++;
                 continue;
             }
+            if (CompanionSpecies.CHICKEN.id().equals(companion.species)) {
+                Chicken chicken = findChicken(companion);
+                if (companion.dead || chicken == null || !chicken.isAlive()
+                        || chicken.level() != owner.level() || owner.distanceToSqr(chicken) > 256) {
+                    skipped++;
+                    continue;
+                }
+                if (command.equals("follow") || command.equals("come")) {
+                    companion.following = true;
+                    companion.dismissed = false;
+                    chickenRuntime.follow(chicken, owner);
+                    companion.action = "FOLLOW";
+                    accepted++;
+                } else if (command.equals("stay") || command.equals("rest")) {
+                    companion.following = false;
+                    companion.dismissed = false;
+                    chickenRuntime.stop(chicken);
+                    companion.action = "STAY";
+                    accepted++;
+                } else {
+                    skipped++;
+                }
+                continue;
+            }
             Wolf wolf = find(companion);
             if (companion.dead || wolf == null || !wolf.isAlive() || !wolf.isOwnedBy(owner)
                     || wolf.level() != owner.level() || owner.distanceToSqr(wolf) > 256) {
