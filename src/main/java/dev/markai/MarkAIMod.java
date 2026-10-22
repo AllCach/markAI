@@ -515,6 +515,8 @@ public final class MarkAIMod implements ModInitializer {
             return 1;
         }
         if (command.equals("inventory")) {
+            if (CompanionSpecies.CHICKEN.id().equals(c.species))
+                return popupNotice(owner, "У курицы-компаньона нет сумки.", false);
             Wolf wolf = find(c);
             if (!owner.isAlive() || owner.isSpectator() || wolf == null || owner.level() != wolf.level() || owner.distanceToSqr(wolf) > 64 || !wolf.isOwnedBy(owner)) return 0;
             cancelTrick(c);
