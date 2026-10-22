@@ -5,7 +5,7 @@ public final class NetworkRulesTest {
     private static int checks;
     public static void main(String[] args) {
         for (String action : new String[]{"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory",
-                "spawn", "summon", "dismiss", "investigate", "memory_prev", "memory_next", "cancel", "tame", "attack", "collect", "stop"}) {
+                "spawn", "spawn_chicken", "summon", "dismiss", "investigate", "memory_prev", "memory_next", "cancel", "tame", "attack", "collect", "stop"}) {
             check(NetworkRules.action(action), "Known action " + action);
         }
         for (String action : new String[]{"attack", "collect", "stop", "come", "stay", "follow", "rest", "wander", "home", "sethome", "investigate"}) {
