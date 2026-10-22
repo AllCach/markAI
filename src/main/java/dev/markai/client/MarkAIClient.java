@@ -40,10 +40,9 @@ public final class MarkAIClient implements ClientModInitializer {
         commandKey("attack", InputConstants.KEY_R, category);
         commandKey("collect", InputConstants.KEY_J, category);
         commandKey("stop", InputConstants.KEY_K, category);
-        commandKey("rest", InputConstants.KEY_N, category);
-        commandKey("come", InputConstants.KEY_M, category);
-        commandKey("follow", InputConstants.KEY_O, category);
-        commandKey("stay", InputConstants.KEY_X, category);
+        commandKey("come", InputConstants.KEY_B, category);
+        commandKey("follow", InputConstants.KEY_M, category);
+        commandKey("stay", InputConstants.KEY_N, category);
         commandKey("inventory", InputConstants.KEY_I, category);
         ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.Snapshot.TYPE, (payload, context) -> {
             STATE.update(payload.json());
@@ -127,9 +126,9 @@ public final class MarkAIClient implements ClientModInitializer {
 
     private static void migrateLegacyKeyDefaults(Minecraft client) {
         keyMigrationChecked = true;
-        boolean changed = remapDefault(lookupCommandKey("come"), "key.keyboard.b", "key.keyboard.m")
-            | remapDefault(lookupCommandKey("follow"), "key.keyboard.m", "key.keyboard.o")
-            | remapDefault(lookupCommandKey("stay"), "key.keyboard.n", "key.keyboard.x");
+        boolean changed = remapDefault(lookupCommandKey("come"), "key.keyboard.m", "key.keyboard.b")
+            | remapDefault(lookupCommandKey("follow"), "key.keyboard.o", "key.keyboard.m")
+            | remapDefault(lookupCommandKey("stay"), "key.keyboard.x", "key.keyboard.n");
         if (changed) client.options.save();
     }
 
