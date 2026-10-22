@@ -158,7 +158,7 @@ public final class CompanionGameTest {
     }
 
     @GameTest(structure = "markai-test:arena", maxTicks = 100)
-    public void savedChickenMigratesWithoutTouchingOrdinaryAnimals(GameTestHelper helper) throws Exception {
+    public void legacyWolfOnlyRecordMigratesWithoutTouchingOrdinaryAnimals(GameTestHelper helper) throws Exception {
         prepareGround(helper);
         ServerPlayer owner = owner(helper);
         var level = helper.getLevel();
@@ -166,6 +166,7 @@ public final class CompanionGameTest {
         Chicken previous = helper.spawn(EntityTypes.CHICKEN, new BlockPos(3, 2, 3));
         Chicken ordinary = helper.spawn(EntityTypes.CHICKEN, new BlockPos(5, 2, 5));
         UUID oldUuid = previous.getUUID();
+        // No species field intentionally models a pre-multispecies wolf-only save.
         MarkAIMod.Companion saved = new MarkAIMod.Companion();
         saved.owner = owner.getUUID(); saved.entity = oldUuid;
         saved.dimension = level.dimension().identifier().toString();
