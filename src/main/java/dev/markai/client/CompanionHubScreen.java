@@ -265,7 +265,7 @@ public final class CompanionHubScreen extends Screen {
     }
     private void drawRoster(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         graphics.text(font,font.plainSubstrByWidth(label("markai.hub.roster_hint"),panelWidth-28),left+14,contentTop+1,MUTED);
-        if (state().companions().isEmpty()) { graphics.text(font,tr("markai.hub.empty"),left+14,contentTop+25,MUTED); return; }
+        if (state().companions().isEmpty()) { graphics.text(font,font.plainSubstrByWidth(label("markai.hub.empty"),panelWidth-28),left+14,contentTop+25,MUTED); graphics.text(font,font.plainSubstrByWidth(label("markai.hub.taming_hint"),panelWidth-28),left+14,contentTop+40,MUTED); return; }
         for (int i=0;i<visibleCards() && i+rosterOffset<state().companions().size();i++) {
             JsonObject member=state().companions().get(i+rosterOffset).getAsJsonObject();
             int x=left+14+(i%columns())*(cardWidth()+8),y=contentTop+14+(i/columns())*96,w=cardWidth();
