@@ -161,7 +161,7 @@ public final class MarkAIClient implements ClientModInitializer {
     /** Ctrl applies one supported command to the entire owner roster, on the server. */
     public static void groupAction(String action) {
         if (!NetworkRules.groupAction(action)) {
-            STATE.notice("error", "Эта команда доступна только для одного компаньона.");
+            STATE.notice("error", Component.translatable("markai.ui.group_only").getString());
             return;
         }
         send(new CompanionNetwork.Action("all:" + action));
