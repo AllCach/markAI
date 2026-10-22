@@ -65,8 +65,8 @@ public final class OllamaClientTest {
                 "Repair does not invent a followup question or assistant exchange");
         });
         check("species identity is injected from persisted state, not a shared wolf-only prompt", () -> {
-            String chickenContext = "{\\"companion\\":{\\"name\\":\\"Mark\\",\\"type\\":\\"minecraft:chicken\\"}}";
-            String wolfContext = "{\\"companion\\":{\\"name\\":\\"Walk\\",\\"type\\":\\"minecraft:wolf\\"}}";
+            String chickenContext = speciesContext("Mark", "minecraft:chicken");
+            String wolfContext = speciesContext("Walk", "minecraft:wolf");
             String chickenSystem = OllamaClient.dialogueMessages(chickenContext, "Ты вообще кто?", List.of())
                 .get(0).getAsJsonObject().get("content").getAsString();
             String wolfSystem = OllamaClient.dialogueMessages(wolfContext, "Ты вообще кто?", List.of())
@@ -80,10 +80,10 @@ public final class OllamaClientTest {
         });
         check("zombie and sword facts respect the selected species", () -> {
             String chicken = OllamaClient.dialogueMessages(
-                "{\\"companion\\":{\\"name\\":\\"Mark\\",\\"type\\":\\"minecraft:chicken\\"}}",
+                speciesContext("Mark", "minecraft:chicken"),
                 "Может ли зомби убить тебя мечом?", List.of()).get(0).getAsJsonObject().get("content").getAsString();
             String wolf = OllamaClient.dialogueMessages(
-                "{\\"companion\\":{\\"name\\":\\"Walk\\",\\"type\\":\\"minecraft:wolf\\"}}",
+                speciesContext("Walk", "minecraft:wolf"),
                 "Может ли зомби убить тебя мечом?", List.of()).get(0).getAsJsonObject().get("content").getAsString();
             require(chicken.contains("не утверждай, что можешь кусать врагов")
                     && !chicken.contains("Как приручённый волк, ты можешь кусать"),
@@ -139,6 +139,15 @@ public final class OllamaClientTest {
         rejects("overlong say", "{\"action\":\"say\",\"say\":\"" + "x".repeat(241) + "\"}");
         rejects("overlong JSON", " ".repeat(4097));
         rejects("null JSON", null);
+    }
+
+    private static String speciesContext(String name, String type) {
+        JsonObject context = new JsonObject();
+        JsonObject companion = new JsonObject();
+        companion.addProperty("name", name);
+        companion.addProperty("type", type);
+        context.add("companion", companion);
+        return context.toString();
     }
 
     private static void endpointChecks() throws Exception {
