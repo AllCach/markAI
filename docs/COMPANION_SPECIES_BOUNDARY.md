@@ -1,6 +1,6 @@
 # Companion species boundary — 0.11.1
 
-This document describes the current multi-species implementation carried forward from the 0.10.5 integration branch. The code has been written through GitHub file operations; a local Gradle build and in-game validation have not yet been run.
+This document describes the multi-species implementation carried into 0.11.1 from the 0.11.0 integration branch. The code has been written through GitHub file operations; a local Gradle build and in-game validation have not yet been run.
 
 ## Current implementation
 
@@ -18,6 +18,7 @@ This document describes the current multi-species implementation carried forward
 
 - Species IDs use canonical values such as `minecraft:chicken`; client screens must compare canonical IDs rather than shortened display labels.
 - The Chicken profile offers only Chicken-supported commands, while the Wolf profile keeps Wolf-specific actions.
+- The profile exposes a dedicated `New chicken` action and the empty owner hub can create a Wolf or Chicken without typing a slash command.
 - The shared owner panel has a dedicated group-orders tab. `P` sets the selected Wolf home, while `Ctrl+P` sets a home for every compatible loaded Wolf within the group command radius. Unsupported species are reported as skipped.
 - Key mappings are registered on the client, localized and configurable under Minecraft Controls. Group-compatible command buttons explain the Ctrl modifier.
 - In-game UI verification should cover Wolf and Chicken profiles, mixed group orders, GUI scales 2 and 4, and set-home execution.
