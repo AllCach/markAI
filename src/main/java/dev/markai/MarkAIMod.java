@@ -387,7 +387,7 @@ public final class MarkAIMod implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> {
             var root = Commands.literal("mark").executes(ctx -> {
                 ctx.getSource().sendSuccess(() -> Component.literal(
-                    "/walk tame | attack | collect | stop | spawn | follow | stay | come | rest | wander | sethome | home | summon | inventory | status | train <приём> | ask <текст> | ai on/off"), false);
+                    "/mark tame | attack | collect | stop | spawn | follow | stay | come | rest | wander | sethome | home | summon | inventory | status | train <приём> | ask <текст> | ai on/off (legacy alias: /walk)"), false);
                 return 1;
             });
             for (String name : List.of("spawn", "respawn", "follow", "stay", "status", "skills", "forget", "bark", "come", "fetch",
@@ -407,6 +407,7 @@ public final class MarkAIMod implements ModInitializer {
                 ai.then(Commands.literal(mode).executes(ctx -> aiCommand(ctx.getSource().getPlayerOrException(), mode)));
             root.then(ai);
             var registered = dispatcher.register(root);
+            // Backward-compatible command alias for existing worlds, scripts and player muscle memory.
             dispatcher.register(Commands.literal("walk").executes(registered.getCommand()).redirect(registered));
         });
     }
@@ -484,7 +485,7 @@ public final class MarkAIMod implements ModInitializer {
                 return 0;
             }
             int ownedCount = companions.owned(owner.getUUID()).size();
-            String wolfName = respawn ? c.living.name : ownedCount == 0 ? "Марк" : "Марк " + (ownedCount + 1);
+            String wolfName = respawn ? c.living.name : defaultCompanionName(owner.getUUID(), CompanionSpecies.WOLF.id());
             wolf.setCustomName(Component.literal(wolfName));
             wolf.setCustomNameVisible(true);
             wolf.tame(owner);
@@ -496,7 +497,7 @@ public final class MarkAIMod implements ModInitializer {
             c = new Companion(); c.owner = owner.getUUID(); c.entity = wolf.getUUID();
             c.id = previousCompanion == null ? UUID.randomUUID() : previousCompanion.id == null ? previousCompanion.entity : previousCompanion.id;
             c.living = previousCompanion == null ? LivingState.forIdentity(c.id) : previousCompanion.living;
-            if (previousCompanion == null && ownedCount > 0) c.living.name = wolfName;
+            if (previousCompanion == null) c.living.name = wolfName;
             if (previousCompanion != null) { c.memory = previousCompanion.memory; c.training = previousCompanion.training; }
             if (previousCompanion == null && aiConfig != null) {
                 c.living.settings.followDistance = aiConfig.followDistance;
@@ -595,6 +596,18 @@ public final class MarkAIMod implements ModInitializer {
         return 1;
     }
 
+    /**
+     * Default names are species-local, not based on total roster size.
+     * Wolves keep their established Walk identity; chickens use Mark.
+     * Explicit vanilla names and names restored from saves always win.
+     */
+    private String defaultCompanionName(UUID ownerId, String species) {
+        String base = CompanionSpecies.CHICKEN.id().equals(species) ? "Mark" : "Walk";
+        long sameSpeciesCount = companions.owned(ownerId).stream()
+            .filter(existing -> species.equals(existing.species)).count();
+        return sameSpeciesCount == 0 ? base : base + " " + (sameSpeciesCount + 1);
+    }
+
     /** Keeps the actual vanilla-tamed animal and its entity inventory; never substitutes a spawn. */
     private int adoptWolf(ServerPlayer owner, Wolf wolf) {
         if (!storageHealthy || !owner.isAlive() || owner.isSpectator() || wolf == null || !wolf.isAlive()
@@ -620,7 +633,7 @@ public final class MarkAIMod implements ModInitializer {
         if (wolf.getCustomName() != null) {
             String name = wolf.getCustomName().getString().strip();
             if (!name.isBlank() && name.codePoints().noneMatch(Character::isISOControl)) companion.living.name = name.substring(0, Math.min(32, name.length()));
-        } else companion.living.name = ownedCount == 0 ? "Walk" : "Walk " + (ownedCount + 1);
+        } else companion.living.name = defaultCompanionName(owner.getUUID(), CompanionSpecies.WOLF.id());
         companion.living.normalize();
         if (aiConfig != null) {
             companion.living.settings.followDistance = aiConfig.followDistance;
@@ -629,10 +642,10 @@ public final class MarkAIMod implements ModInitializer {
         }
         companion.following = !wolf.isOrderedToSit(); companion.memory.bind(companion.id);
         remember(companion, wolf, (ServerLevel) wolf.level()); companions.add(companion);
-        // A new tame joins the owner's roster without stealing focus from Walk.
+        // A new tame joins the owner's roster without changing the current selection.
         // The registry selects it automatically only when this is the first companion.
         configure(companion, wolf); save();
-        return wolfNotice(owner, companion.living.name + " стал твоим компаньоном. Shift + ПКМ — сумка; /walk attack — атаковать цель; /walk collect — собрать предметы.", true);
+        return wolfNotice(owner, companion.living.name + " стал твоим компаньоном. Shift + ПКМ — сумка; /mark attack — атаковать цель; /mark collect — собрать предметы.", true);
     }
 
     private enum ChickenTamingResult { ADOPTED, ALREADY_REGISTERED, REJECTED }
@@ -671,7 +684,7 @@ public final class MarkAIMod implements ModInitializer {
             if (!customName.isBlank() && customName.codePoints().noneMatch(Character::isISOControl))
                 companion.living.name = customName.substring(0, Math.min(32, customName.length()));
         } else {
-            companion.living.name = ownedCount == 0 ? "Walk" : "Walk " + (ownedCount + 1);
+            companion.living.name = defaultCompanionName(owner.getUUID(), CompanionSpecies.CHICKEN.id());
         }
         companion.living.normalize();
         if (aiConfig != null) {
@@ -1213,7 +1226,7 @@ public final class MarkAIMod implements ModInitializer {
             owner.sendSystemMessage(Component.literal("Для обучения нужен ваш живой компаньон рядом.")); return 0;
         }
         if (trick == null) {
-            owner.sendSystemMessage(Component.literal("Обучение: /walk train голос | ко мне | принеси")); return 0;
+            owner.sendSystemMessage(Component.literal("Обучение: /mark train голос | ко мне | принеси")); return 0;
         }
         if (wolf.distanceTo(owner) > 4 || wolf.getTarget() != null || c.trick != null) {
             owner.sendSystemMessage(Component.literal("Подойдите к компаньону. Тренироваться можно, когда он свободен и бой закончен.")); return 0;
@@ -1469,7 +1482,7 @@ public final class MarkAIMod implements ModInitializer {
             + ", модель=" + (aiConfig == null ? "ошибка конфига" : aiConfig.effectiveModel())
             + (ollama == null ? ", клиент недоступен; см. журнал" : "")
             + (session.pending == null ? "" : ", ожидаю ответ")
-            + ". Обращение: /mark ask <текст> или walk, <текст>."));
+            + ". Обращение: /mark ask <текст> или <имя>, <текст>."));
         return 1;
     }
 
