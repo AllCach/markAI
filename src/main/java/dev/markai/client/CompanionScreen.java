@@ -132,8 +132,15 @@ public final class CompanionScreen extends Screen {
     }
     /** On narrow windows retain the original compact profile instead of clipping the controls. */
     private boolean showCarousel() { return panelWidth >= 350 && profilePreviewBottom() - contentTop >= 165; }
+    private int profileActionColumns() { return panelWidth >= 420 ? 4 : 2; }
+    private int profileActionCount() {
+        if (!NetworkRules.companionId(state().companionId())) return 3;
+        if (isSelectedDead()) return isChickenSelected() ? 1 : 2;
+        return isChickenSelected() ? 3 : 5;
+    }
     private int profilePreviewBottom() {
-        int rows = (4 + profileActionColumns() - 1) / profileActionColumns();
+        int columns = profileActionColumns();
+        int rows = (profileActionCount() + columns - 1) / columns;
         return contentBottom - rows * 23 - 5;
     }
     private int carouselHeight() {
@@ -171,21 +178,30 @@ public final class CompanionScreen extends Screen {
             previousCard.setTooltip(Tooltip.create(tr("markai.ui.previous_companion")));
             nextCard.setTooltip(Tooltip.create(tr("markai.ui.next_companion")));
         }
+        boolean hasSelection = NetworkRules.companionId(state().companionId());
         String[] actions;
-        if (isChickenSelected()) {
-            // Chickens have their own runtime; never present wolf adoption or wolf spawning here.
-            actions = isSelectedDead() ? new String[] {"spawn"} : new String[] {"summon", "dismiss"};
+        if (!hasSelection) {
+            actions = new String[] {"spawn", "spawn_chicken", "tame"};
+        } else if (isChickenSelected()) {
+            // A Chicken has no wolf-taming, combat, bag or wolf-spawn controls.
+            actions = isSelectedDead() ? new String[] {"spawn"} : new String[] {"spawn_chicken", "summon", "dismiss"};
         } else {
-            actions = isSelectedDead() ? new String[] {"spawn"} : new String[] {"spawn", "tame", "summon", "dismiss"};
+            actions = isSelectedDead() ? new String[] {"spawn", "spawn_chicken"}
+                : new String[] {"spawn", "spawn_chicken", "tame", "summon", "dismiss"};
         }
-        int columns = panelWidth >= 420 ? Math.min(4, actions.length) : Math.min(2, actions.length);
+        int columns = Math.min(profileActionColumns(), actions.length);
         int rows = (actions.length + columns - 1) / columns;
         int w = (panelWidth - 20 - (columns - 1) * 3) / columns;
         int y = contentBottom - (rows * 23 - 3);
         for (int i = 0; i < actions.length; i++) {
             String action = actions[i];
             String key = action.equals("spawn") && isSelectedDead() ? "markai.command.respawn" : "markai.command." + action;
-            Button button = addButton(label(key), left + 10 + (i % columns) * (w + 3), y + (i / columns) * 23, w, () -> command(action));
+            int row = i / columns, column = i % columns;
+            int itemsInRow = Math.min(columns, actions.length - row * columns);
+            int rowWidth = itemsInRow * w + (itemsInRow - 1) * 3;
+            int rowLeft = left + (panelWidth - rowWidth) / 2;
+            Button button = addButton(label(key), rowLeft + column * (w + 3), y + row * 23, w, () -> command(action));
+            if (action.equals("spawn_chicken")) button.setTooltip(Tooltip.create(tr("markai.command.hint.spawn_chicken")));
             if (action.equals("summon")) button.setTooltip(Tooltip.create(tr("markai.command.hint.summon")));
             if (action.equals("dismiss")) button.setTooltip(Tooltip.create(tr("markai.command.hint.dismiss")));
             if (action.equals("tame")) button.setTooltip(Tooltip.create(tr("markai.command.hint.tame")));
