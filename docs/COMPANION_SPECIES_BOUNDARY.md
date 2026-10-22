@@ -18,7 +18,8 @@ This document describes the multi-species implementation carried into 0.11.1 fro
 
 - Species IDs use canonical values such as `minecraft:chicken`; client screens must compare canonical IDs rather than shortened display labels.
 - The Chicken profile offers only Chicken-supported commands, while the Wolf profile keeps Wolf-specific actions.
-- The profile exposes a dedicated `New chicken` action and the empty owner hub can create a Wolf or Chicken without typing a slash command.
+- With no selected companion, the profile and command tabs show taming instructions instead of actionable commands.
+- Companion creation belongs to in-world taming, not UI buttons. Wolves register after vanilla bone taming; wild chickens register when the owner sneaks and right-clicks with an item in `#minecraft:chicken_food`. Normal chicken feeding without sneak remains vanilla.
 - The shared owner panel has a dedicated group-orders tab. `P` sets the selected Wolf home, while `Ctrl+P` sets a home for every compatible loaded Wolf within the group command radius. Unsupported species are reported as skipped.
 - Key mappings are registered on the client, localized and configurable under Minecraft Controls. Group-compatible command buttons explain the Ctrl modifier.
 - In-game UI verification should cover Wolf and Chicken profiles, mixed group orders, GUI scales 2 and 4, and set-home execution.
