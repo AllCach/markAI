@@ -2014,6 +2014,9 @@ public final class MarkAIMod implements ModInitializer {
             "day_time", chicken.level().getOverworldClockTime(), "raining", chicken.level().isRaining(),
             "thundering", chicken.level().isThundering()));
         facts.put("identity", new CompanionIdentity(c.id, c.owner, c.entity));
+        boolean roleplaysRooster = c.memory.history().stream().anyMatch(entry ->
+            "user".equals(entry.role()) && entry.content().toLowerCase(Locale.ROOT).matches(".*петух.*отыгр.*"));
+        facts.put("roleplay_identity", roleplaysRooster ? "петух (игрок попросил отыгрывать роль петуха)" : "курица");
         facts.put("danger_now", false);
         facts.put("nearby_hostiles", List.of());
         facts.put("nearby_entities", List.of());
