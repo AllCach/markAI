@@ -199,6 +199,7 @@ public final class CompanionScreen extends Screen {
         }
     }
     private void initCommands() {
+        if (!NetworkRules.companionId(state().companionId())) return;
         String[] actions = isChickenSelected()
             ? new String[] {"follow", "come", "stay", "rest", "stop", "summon", "dismiss"}
             : new String[] {"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory", "attack", "collect", "stop"};
@@ -368,7 +369,7 @@ public final class CompanionScreen extends Screen {
         graphics.text(font, font.plainSubstrByWidth(selected, panelWidth - 202), left + 116, top + 14, ACCENT);
         switch (tab) {
             case PROFILE -> { if (NetworkRules.companionId(state().companionId())) drawProfile(graphics, mouseX, mouseY); else drawTamingGuide(graphics); }
-            case COMMANDS -> { }
+            case COMMANDS -> { if (!NetworkRules.companionId(state().companionId())) drawTamingGuide(graphics); }
             case DIALOGUE -> drawDialogue(graphics);
             case MEMORIES -> drawMemories(graphics);
             case SETTINGS -> {
