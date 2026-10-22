@@ -112,7 +112,7 @@ public final class MarkAIClient implements ClientModInitializer {
                 String line = client.font.plainSubstrByWidth(popup, Math.max(80, graphics.guiWidth() - 48));
                 int width = Math.min(graphics.guiWidth() - 24, client.font.width(line) + 24);
                 int x = (graphics.guiWidth() - width) / 2;
-                int y = Math.max(48, Math.min(graphics.guiHeight() - 64, graphics.guiHeight() / 3));
+                int y = Math.max(48, Math.min(graphics.guiHeight() - 64, graphics.guiHeight() / 3 - 24));
                 int border = STATE.popupError() ? 0xFFE08A8A : 0xFF77B995;
                 graphics.fill(x, y, x + width, y + 28, 0xE0182528);
                 graphics.outline(x, y, width, 28, border);
