@@ -109,6 +109,7 @@ public final class CompanionScreen extends Screen {
     private void rememberDraft() {
         if (input != null) draft = input.getValue();
         if (rename != null) renameDraft = rename.getValue();
+        if (journalInput != null) journalDraft = journalInput.getValue();
     }
     /** Drafts and memory selection belong to one companion, including after a server-side selection. */
     public void selectionUpdated() {
