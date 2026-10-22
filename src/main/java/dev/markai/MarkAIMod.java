@@ -244,7 +244,7 @@ public final class MarkAIMod implements ModInitializer {
                             throw new IOException("Companion species runtime is not available yet: " + c.species);
                         }
                         if (c.memory == null) c.memory = new CompanionMemory();
-                        if (c.training == null) c.training = new DogTraining();
+                        if (c.training == null) c.training = new WolfTraining();
                         if (c.progression == null) c.progression = new CompanionProgression();
                         c.progression.normalize(c.species);
                         if (c.living == null) c.living = new LivingState();
