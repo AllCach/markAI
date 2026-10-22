@@ -431,7 +431,7 @@ public final class MarkAIMod implements ModInitializer {
             return adoptWolf(owner, wolf);
         }
         if (c != null && CompanionSpecies.CHICKEN.id().equals(c.species)
-                && (command.equals("respawn") || command.equals("spawn"))) {
+                && (command.equals("respawn") || (command.equals("spawn") && c.dead))) {
             if (!c.dead) {
                 Chicken existing = findChicken(c);
                 owner.sendSystemMessage(Component.literal(existing != null
