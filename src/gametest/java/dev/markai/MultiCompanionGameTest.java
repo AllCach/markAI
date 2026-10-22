@@ -353,6 +353,10 @@ public final class MultiCompanionGameTest {
         helper.assertTrue(secondWolf != null && secondWolf != chickenCompanion
                 && "minecraft:wolf".equals(secondWolf.species),
             "The canonical spawn command creates a wolf even while a live chicken is selected");
+        Wolf secondWolfEntity = secondWolf == null ? null : (Wolf) helper.getLevel().getEntity(secondWolf.entity);
+        helper.assertTrue(secondWolfEntity != null && secondWolfEntity.isAlive()
+                && secondWolfEntity.isOwnedBy(owner) && secondWolfEntity != wolf,
+            "The additional Wolf record must resolve to a real new owner-tamed entity");
         helper.assertTrue("Walk 2".equals(secondWolf.living.name)
                 && "Mark".equals(chickenCompanion.living.name),
             "Default names and numbering are calculated per species, regardless of taming order");
