@@ -23,6 +23,8 @@
     "markai.tab.memories": "Memories",
     "markai.tab.settings": "Settings",
     "markai.command.spawn": "New wolf",
+    "markai.command.spawn_chicken": "New chicken",
+    "markai.command.hint.spawn_chicken": "Create a separate chicken companion. Your current companion stays registered.",
     "markai.command.tame": "Tame wolf",
     "markai.command.respawn": "Respawn",
     "markai.command.group_sethome": "Set home for group",
