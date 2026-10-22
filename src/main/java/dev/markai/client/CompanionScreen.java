@@ -56,7 +56,7 @@ public final class CompanionScreen extends Screen {
         panelHeight = Math.max(190, Math.min(470, height - 16));
         if (quick) { panelWidth = Math.min(panelWidth, 400); panelHeight = Math.min(panelHeight, 250); }
         left = (width - panelWidth) / 2; top = (height - panelHeight) / 2;
-        contentTop = top + (quick ? 42 : 66); contentBottom = top + panelHeight - 34;
+        contentTop = top + (quick ? 42 : panelWidth < 440 ? 82 : 66); contentBottom = top + panelHeight - 34;
         input = null; rename = null; sendButton = null; deleteButton = null; renameButton = null;
         previousCard = null; nextCard = null;
         memoryButtons.clear(); settingButtons.clear(); traitButtons.clear();
@@ -68,10 +68,16 @@ public final class CompanionScreen extends Screen {
         nextCompanion = addButton("›", left + panelWidth - 56, top + 8, 20, () -> selectCompanion(1));
         nextCompanion.setTooltip(Tooltip.create(tr("markai.ui.next_companion")));
         if (!quick) {
-            int tabWidth = (panelWidth - 20) / Tab.values().length;
+            int columns = panelWidth < 440 ? 3 : Tab.values().length;
             for (Tab destination : Tab.values()) {
+                int row = destination.ordinal() / columns;
+                int column = destination.ordinal() % columns;
+                int columnsInRow = row == 0 ? columns : Tab.values().length - columns;
+                int tabWidth = (panelWidth - 20 - (columnsInRow - 1) * 2) / columnsInRow;
+                int x = left + 10 + column * (tabWidth + 2);
+                if (row > 0) x = left + (panelWidth - (columnsInRow * tabWidth + (columnsInRow - 1) * 2)) / 2 + column * (tabWidth + 2);
                 Button button = addButton(label("markai.tab." + destination.name().toLowerCase(Locale.ROOT)),
-                    left + 10 + destination.ordinal() * tabWidth, top + 34, tabWidth - 2, () -> changeTab(destination));
+                    x, top + 34 + row * 23, tabWidth, () -> changeTab(destination));
                 button.active = destination != tab;
             }
         }
