@@ -22,7 +22,7 @@ public final class FieldJournal {
     public static final int MAX_NOTE_LENGTH = 512;
     private static final Pattern RESOURCE_ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
 
-    private final Map<String, Entry> entries = new LinkedHashMap<>();
+    private Map<String, Entry> entries = new LinkedHashMap<>();
     private long nextNoteId = 1;
 
     public enum ResearchStage { UNKNOWN, OBSERVED, STUDIED, DOCUMENTED }
@@ -108,6 +108,55 @@ public final class FieldJournal {
     }
 
     public int speciesCount() { return entries.size(); }
+
+    /** Repairs untrusted deserialized state before it is used by gameplay. */
+    public void normalize() {
+        Map<String, Entry> safe = new LinkedHashMap<>();
+        if (entries != null) {
+            for (var item : entries.entrySet()) {
+                String id = item.getKey();
+                Entry entry = item.getValue();
+                if (!validId(id) || entry == null || safe.size() >= MAX_SPECIES) continue;
+                Entry clean = new Entry();
+                clean.speciesId = id;
+                clean.firstObservedAt = Math.max(0, entry.firstObservedAt);
+                clean.lastObservedAt = Math.max(clean.firstObservedAt, entry.lastObservedAt);
+                Set<String> entityIds = new LinkedHashSet<>();
+                if (entry.observedEntityIds != null) {
+                    for (String value : entry.observedEntityIds) {
+                        try {
+                            if (value != null && entityIds.size() < MAX_UNIQUE_ENTITIES_PER_SPECIES)
+                                entityIds.add(UUID.fromString(value).toString());
+                        } catch (IllegalArgumentException ignored) { }
+                    }
+                }
+                clean.observedEntityIds = new ArrayList<>(entityIds);
+                clean.observationCount = clean.observedEntityIds.size();
+                if (entry.biomes != null) {
+                    for (String biome : entry.biomes) {
+                        if (validId(biome) && !clean.biomes.contains(biome) && clean.biomes.size() < MAX_BIOMES_PER_SPECIES)
+                            clean.biomes.add(biome);
+                    }
+                }
+                Set<Long> noteIds = new LinkedHashSet<>();
+                long highestNoteId = 0;
+                if (entry.notes != null) {
+                    for (Note note : entry.notes) {
+                        if (note == null || note.id() <= 0 || note.text() == null) continue;
+                        String text = note.text().strip();
+                        if (text.isEmpty() || text.length() > MAX_NOTE_LENGTH || !noteIds.add(note.id())) continue;
+                        if (clean.notes.size() >= MAX_NOTES_PER_SPECIES) break;
+                        clean.notes.add(new Note(note.id(), text, Math.max(0, note.createdAt())));
+                        highestNoteId = Math.max(highestNoteId, note.id());
+                    }
+                }
+                nextNoteId = Math.max(nextNoteId, highestNoteId + 1);
+                safe.put(id, clean);
+            }
+        }
+        entries = safe;
+        nextNoteId = Math.max(1, nextNoteId);
+    }
 
     public Knowledge knowledge(String speciesId, Topic topic) {
         Entry entry = entries.get(speciesId);
