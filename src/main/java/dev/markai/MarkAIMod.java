@@ -1147,8 +1147,8 @@ public final class MarkAIMod implements ModInitializer {
         if (CompanionSpecies.CHICKEN.id().equals(c.species)) return;
         Wolf wolf = find(c);
         if (wolf == null) return;
-        wolf.getAttribute(Attributes.MAX_HEALTH).setBaseValue(8.0 + c.progression.guardianRank * 2.0);
-        wolf.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(4.0 + c.progression.hunterRank * 0.5);
+        wolf.getAttribute(Attributes.MAX_HEALTH).setBaseValue(40.0 + c.progression.guardianRank * 4.0);
+        wolf.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(4.0 + c.progression.hunterRank * 1.0);
         wolf.getAttribute(Attributes.FOLLOW_RANGE).setBaseValue(CompanionCombatRules.combatRadius() + c.progression.trackerRank * 4.0);
         wolf.setHealth(Math.min(wolf.getHealth(), wolf.getMaxHealth()));
     }
