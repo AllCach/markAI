@@ -1,7 +1,7 @@
 package dev.markai.mixin;
 
 import dev.markai.inventory.CompanionInventoryHolder;
-import dev.markai.inventory.DogInventory;
+import dev.markai.inventory.WolfInventory;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -22,7 +22,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class WolfInventoryMixin implements CompanionInventoryHolder {
     @Unique private static final EntityDataAccessor<Boolean> MARKAI_COMPANION =
         SynchedEntityData.defineId(Wolf.class, EntityDataSerializers.BOOLEAN);
-    @Unique private DogInventory markai$inventory;
+    @Unique private WolfInventory markai$inventory;
     @Unique private boolean markai$inventoryDropped;
 
     @Inject(method = "defineSynchedData", at = @At("TAIL"))
@@ -38,15 +38,15 @@ public abstract class WolfInventoryMixin implements CompanionInventoryHolder {
         ((Wolf) (Object) this).getEntityData().set(MARKAI_COMPANION, companion);
     }
 
-    @Override public DogInventory markai$inventory() {
-        if (markai$inventory == null) markai$inventory = new DogInventory((Wolf) (Object) this);
+    @Override public WolfInventory markai$inventory() {
+        if (markai$inventory == null) markai$inventory = new WolfInventory((Wolf) (Object) this);
         return markai$inventory;
     }
 
     @Override public void markai$releaseCompanion() {
         Wolf wolf = (Wolf) (Object) this;
         if (wolf.level() instanceof ServerLevel level && markai$isCompanion()) {
-            DogInventory inventory = markai$inventory();
+            WolfInventory inventory = markai$inventory();
             if (!inventory.isEmpty()) {
                 Containers.dropContents(level, wolf, inventory);
                 inventory.clearContent();
