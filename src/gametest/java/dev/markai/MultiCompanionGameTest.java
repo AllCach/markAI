@@ -6,12 +6,16 @@ import dev.markai.companion.CompanionRegistry;
 import dev.markai.inventory.CompanionInventoryHolder;
 import dev.markai.network.CompanionNetwork;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.protocol.game.ServerboundPlayerLoadedPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.animal.cow.Cow;
@@ -287,12 +291,27 @@ public final class MultiCompanionGameTest {
         helper.assertTrue(wolfCompanion != null, "The wolf companion is registered first");
         Wolf wolf = (Wolf) helper.getLevel().getEntity(wolfCompanion.entity);
         helper.assertTrue(wolf != null && wolf.isAlive(), "The first companion is a real living wolf");
+        helper.assertTrue("Walk".equals(wolfCompanion.living.name),
+            "A newly spawned wolf uses the canonical species default name");
 
-        command(owner, "mark spawn chicken");
+        Chicken chicken = EntityTypes.CHICKEN.create(helper.getLevel(), EntitySpawnReason.COMMAND);
+        helper.assertTrue(chicken != null, "Minecraft must create a real wild test chicken");
+        Vec3 chickenPos = helper.absoluteVec(new Vec3(7, 2, 7));
+        chicken.setPos(chickenPos.x, chickenPos.y, chickenPos.z);
+        helper.assertTrue(helper.getLevel().addFreshEntity(chicken), "The wild chicken must enter the world");
+        owner.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.WHEAT_SEEDS));
+        owner.setShiftKeyDown(true);
+        InteractionResult tamingResult = UseEntityCallback.EVENT.invoker()
+            .interact(owner, helper.getLevel(), InteractionHand.MAIN_HAND, chicken, null);
+        owner.setShiftKeyDown(false);
+        owner.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+        helper.assertTrue(tamingResult == InteractionResult.CONSUME,
+            "Only Shift + right-click with seeds adopts the existing chicken");
         MarkAIMod.Companion chickenCompanion = registry.selected(owner.getUUID());
         helper.assertTrue(chickenCompanion != null && chickenCompanion != wolfCompanion,
-            "Chicken creation registers a separate logical companion");
-        Chicken chicken = (Chicken) helper.getLevel().getEntity(chickenCompanion.entity);
+            "Natural chicken taming registers a separate logical companion");
+        helper.assertTrue("Mark".equals(chickenCompanion.living.name),
+            "A chicken receives the chicken-specific default name rather than Walk");
         helper.assertTrue(chicken != null && chicken.isAlive() && wolf.isAlive(),
             "The chicken and wolf entities coexist without replacing one another");
         helper.assertTrue(!wolfCompanion.entity.equals(chickenCompanion.entity)
