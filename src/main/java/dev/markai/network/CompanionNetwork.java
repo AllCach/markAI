@@ -33,6 +33,7 @@ public final class CompanionNetwork {
         void setting(ServerPlayer player, String key, String value);
         void select(ServerPlayer player, String companionId);
         void remove(ServerPlayer player, String companionId);
+        void journalNote(ServerPlayer player, String speciesId, String text, String noteId);
     }
     private static final class Limits {
         long refreshAt, actionAt, chatAt, rateNoticeAt;
@@ -71,6 +72,14 @@ public final class CompanionNetwork {
         public static final Type<MemoryDelete> TYPE = CompanionNetwork.type("ui_memory_delete");
         public static final StreamCodec<RegistryFriendlyByteBuf, MemoryDelete> CODEC = StreamCodec.composite(ByteBufCodecs.stringUtf8(36), MemoryDelete::id, MemoryDelete::new);
         @Override public Type<MemoryDelete> type() { return TYPE; }
+    }
+    public record JournalNote(String speciesId, String text, String noteId) implements CustomPacketPayload {
+        public static final Type<JournalNote> TYPE = CompanionNetwork.type("ui_journal_note");
+        public static final StreamCodec<RegistryFriendlyByteBuf, JournalNote> CODEC = StreamCodec.composite(
+            ByteBufCodecs.stringUtf8(128), JournalNote::speciesId,
+            ByteBufCodecs.stringUtf8(512), JournalNote::text,
+            ByteBufCodecs.stringUtf8(20), JournalNote::noteId, JournalNote::new);
+        @Override public Type<JournalNote> type() { return TYPE; }
     }
     public record Select(String companionId) implements CustomPacketPayload {
         public static final Type<Select> TYPE = CompanionNetwork.type("ui_select");
@@ -114,6 +123,7 @@ public final class CompanionNetwork {
         c2s.register(Chat.TYPE, Chat.CODEC); c2s.register(Cancel.TYPE, Cancel.CODEC);
         c2s.register(GroupChat.TYPE, GroupChat.CODEC);
         c2s.register(MemoryDelete.TYPE, MemoryDelete.CODEC); c2s.register(Setting.TYPE, Setting.CODEC);
+        c2s.register(JournalNote.TYPE, JournalNote.CODEC);
         c2s.register(Select.TYPE, Select.CODEC); c2s.register(Remove.TYPE, Remove.CODEC);
         var s2c = PayloadTypeRegistry.clientboundPlay();
         s2c.register(Snapshot.TYPE, Snapshot.CODEC); s2c.register(Notice.TYPE, Notice.CODEC); s2c.register(Popup.TYPE, Popup.CODEC);
@@ -155,6 +165,11 @@ public final class CompanionNetwork {
         ServerPlayNetworking.registerGlobalReceiver(MemoryDelete.TYPE, (payload, context) -> mutate(context.player(), () -> {
             if (!NetworkRules.memoryId(payload.id())) throw new IllegalArgumentException("Invalid memory id");
             backend.deleteMemory(context.player(), payload.id());
+        }));
+        ServerPlayNetworking.registerGlobalReceiver(JournalNote.TYPE, (payload, context) -> mutate(context.player(), () -> {
+            if (!NetworkRules.journalNote(payload.speciesId(), payload.text(), payload.noteId()))
+                throw new IllegalArgumentException("Invalid field journal note");
+            backend.journalNote(context.player(), payload.speciesId(), payload.text(), payload.noteId());
         }));
         ServerPlayNetworking.registerGlobalReceiver(Select.TYPE, (payload, context) -> mutate(context.player(), () -> {
             if (!NetworkRules.companionId(payload.companionId())) throw new IllegalArgumentException("Invalid companion id");

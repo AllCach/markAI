@@ -97,7 +97,8 @@ check.dependsOn legacyCompanionSpeciesTest
  'repetitionGuardTest': 'dev.markai.ai.RepetitionGuardLlmProviderTest',
  'memorySystemTest': 'dev.markai.memory.MemorySystemTest',
  'companionSpeciesTest': 'dev.markai.companion.CompanionSpeciesTest',
- 'companionProgressionTest': 'dev.markai.companion.CompanionProgressionTest'].each { taskName, testMain ->
+ 'companionProgressionTest': 'dev.markai.companion.CompanionProgressionTest',
+ 'fieldJournalTest': 'dev.markai.journal.FieldJournalTest'].each { taskName, testMain ->
     tasks.register(taskName, JavaExec) {
         dependsOn aiChecksClasses
         classpath = sourceSets.aiChecks.runtimeClasspath

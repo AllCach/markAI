@@ -35,6 +35,20 @@ public final class NetworkRules {
     public static boolean memoryId(String id) {
         return canonicalId(id);
     }
+    public static boolean journalSpeciesId(String id) {
+        return id != null && id.length() <= 128
+            && id.matches("[a-z0-9_.-]+:[a-z0-9_./-]+");
+    }
+    /** noteId "0" means add; a positive decimal ID means delete. */
+    public static boolean journalNote(String speciesId, String text, String noteId) {
+        if (!journalSpeciesId(speciesId) || text == null || noteId == null || noteId.length() > 19) return false;
+        if (noteId.equals("0")) return !text.isBlank() && text.length() <= 512
+            && text.codePoints().noneMatch(Character::isISOControl);
+        try {
+            long id = Long.parseLong(noteId);
+            return id > 0 && text.isEmpty();
+        } catch (NumberFormatException ignored) { return false; }
+    }
     public static boolean companionId(String id) {
         return canonicalId(id);
     }

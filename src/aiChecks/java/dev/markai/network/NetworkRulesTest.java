@@ -31,6 +31,16 @@ public final class NetworkRulesTest {
         check(NetworkRules.memoryId("f5095bb5-b54c-4c67-bc62-ab7222f5b33a"), "Canonical memory UUID");
         check(NetworkRules.companionId("f5095bb5-b54c-4c67-bc62-ab7222f5b33a"), "Canonical companion UUID");
         check(!NetworkRules.companionId(null), "Null companion UUID");
+        check(NetworkRules.journalSpeciesId("minecraft:wolf"), "Valid journal species ID");
+        check(!NetworkRules.journalSpeciesId("../markai.json") && !NetworkRules.journalSpeciesId("WOLF"),
+            "Journal species IDs reject path traversal and malformed identifiers");
+        check(NetworkRules.journalNote("minecraft:wolf", "Tracks by the river", "0"), "Valid journal note addition");
+        check(NetworkRules.journalNote("minecraft:wolf", "", "12"), "Valid journal note deletion");
+        check(!NetworkRules.journalNote("minecraft:wolf", "x".repeat(513), "0"), "Oversized journal note rejected");
+        check(!NetworkRules.journalNote("minecraft:wolf", "line\nbreak", "0"), "Control characters rejected in journal note");
+        check(!NetworkRules.journalNote("../world", "note", "0")
+            && !NetworkRules.journalNote("minecraft:wolf", "not blank", "12")
+            && !NetworkRules.journalNote("minecraft:wolf", "", "-1"), "Malformed journal mutations rejected");
         for (String id : new String[]{"", "1-2-3-4-5", "F5095BB5-B54C-4C67-BC62-AB7222F5B33A", "../../world/markai.json", "f5095bb5-b54c-4c67-bc62-ab7222f5b33z"}) {
             check(!NetworkRules.memoryId(id), "Reject malformed memory id");
             check(!NetworkRules.companionId(id), "Reject malformed companion id");
