@@ -15,6 +15,15 @@ import net.fabricmc.api.Environment;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.animal.chicken.Chicken;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.impl.client.gametest.util.WindowHooks;
 import net.minecraft.client.KeyMapping;
@@ -454,14 +463,36 @@ public final class ClientUiGameTest implements FabricClientGameTest {
 
                 context.runOnClient(client -> check(KeyMapping.get("key.markai.sethome") != null,
                     "Set-home must be registered as a configurable Minecraft key mapping"));
+                AtomicReference<String> chickenId = new AtomicReference<>();
                 server.runOnServer(instance -> {
                     ServerPlayer owner = instance.getPlayerList().getPlayer(ownerId);
-                    instance.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark spawn chicken");
+                    ServerLevel level = (ServerLevel) owner.level();
+                    Chicken wild = EntityTypes.CHICKEN.create(level, EntitySpawnReason.COMMAND);
+                    if (wild == null) throw new AssertionError("Minecraft must create a wild test chicken");
+                    wild.setPos(owner.getX() + 2, owner.getY(), owner.getZ() + 2);
+                    if (!level.addFreshEntity(wild)) throw new AssertionError("Wild test chicken must enter the world");
+                    owner.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.WHEAT_SEEDS));
+                    owner.setShiftKeyDown(true);
+                    InteractionResult result = UseEntityCallback.EVENT.invoker()
+                        .interact(owner, level, InteractionHand.MAIN_HAND, wild, null);
+                    owner.setShiftKeyDown(false);
+                    owner.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+                    check(result == InteractionResult.CONSUME, "Shift + right-click with seeds must intercept chicken taming");
+                    try {
+                        MarkAIMod.Companion adopted = TestCompanions.registry(mod).byEntity(wild.getUUID());
+                        check(adopted != null && adopted.species.equals("minecraft:chicken"),
+                            "Taming must register the actual wild chicken as the owner's companion");
+                        chickenId.set(adopted.id.toString());
+                    } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
                     instance.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark ai off");
                 });
                 context.waitFor(client -> MarkAIClient.STATE.companions().size() == 2
-                    && MarkAIClient.STATE.string("species", "").equals("minecraft:chicken"));
-                context.takeScreenshot("markai-hub-with-chicken");
+                    && MarkAIClient.STATE.companions().toString().contains("minecraft:chicken"));
+                context.runOnClient(client -> check(MarkAIClient.select(chickenId.get()),
+                    "The chicken adopted with seeds must be selectable in the companion UI"));
+                connection.waitForServerboundPackets();
+                context.waitFor(client -> MarkAIClient.STATE.companionId().equals(chickenId.get()));
+                context.takeScreenshot("markai-hub-with-tamed-chicken");
 
                 closeWithEscape(context);
                 context.getInput().pressKey(KeyMapping.get("key.markai.open"));
@@ -471,23 +502,13 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                     List<String> labels = client.gui.screen().children().stream().filter(widget -> widget instanceof Button)
                         .map(widget -> ((Button) widget).getMessage().getString()).toList();
                     check(!labels.contains(text("markai.command.tame")),
-                        "Chicken profile must not offer the wolf tame action");
+                        "Chicken profile must not offer wolf taming");
                     check(!labels.contains(text("markai.command.spawn")),
-                        "A living chicken profile must not offer the wolf spawn action");
-                    check(labels.contains(text("markai.command.spawn_chicken")),
-                        "The profile must offer a species-correct way to create a chicken companion");
+                        "A tamed Chicken profile must not offer wolf spawning");
+                    check(labels.contains(text("markai.command.summon")) && labels.contains(text("markai.command.dismiss")),
+                        "A tamed Chicken profile must expose companion-management actions");
                 });
                 context.takeScreenshot("markai-chicken-profile");
-                pace(context);
-                context.clickScreenButton(text("markai.command.spawn_chicken"));
-                connection.waitForServerboundPackets();
-                context.waitFor(client -> MarkAIClient.STATE.companions().size() == 3
-                    && MarkAIClient.STATE.string("species", "").equals("minecraft:chicken"));
-                server.runOnServer(instance -> {
-                    ServerPlayer owner = instance.getPlayerList().getPlayer(ownerId);
-                    instance.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark ai off");
-                });
-                context.takeScreenshot("markai-after-create-chicken");
                 context.clickScreenButton("markai.tab.commands");
                 context.runOnClient(client -> {
                     List<String> labels = client.gui.screen().children().stream().filter(widget -> widget instanceof Button)
