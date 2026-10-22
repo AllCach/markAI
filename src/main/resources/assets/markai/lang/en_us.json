@@ -184,5 +184,20 @@
     "markai.talent.tracker.desc": "Increases follow range.",
     "markai.talent.nimble.desc": "Increases chicken movement speed.",
     "markai.talent.lookout.desc": "Increases the chicken follow distance.",
-    "markai.talent.evasive.desc": "Makes the chicken flee nearby monsters."
+    "markai.talent.evasive.desc": "Makes the chicken flee nearby monsters.",
+    "markai.journal.minecraft.wolf.overview": "A wild pack animal that can become a loyal companion when tamed.",
+    "markai.journal.minecraft.wolf.behavior": "Wolves hunt nearby sheep, rabbits and skeletons; tamed wolves defend their owner when threatened.",
+    "markai.journal.minecraft.wolf.habitat": "Wolves are commonly encountered in forests, taigas and other cold or wooded biomes.",
+    "markai.journal.minecraft.wolf.threats": "Untamed wolves may attack sheep and rabbits; hostile mobs can threaten a lone wolf.",
+    "markai.journal.minecraft.wolf.taming": "Feed bones to a wild wolf until hearts appear. A tamed wolf can be healed with suitable meat.",
+    "markai.journal.minecraft.chicken.overview": "A small farm animal that wanders and lays eggs over time.",
+    "markai.journal.minecraft.chicken.behavior": "Chickens wander, follow seeds and may drop feathers or raw chicken when killed.",
+    "markai.journal.minecraft.chicken.habitat": "Chickens commonly appear in grassy biomes where animals can spawn.",
+    "markai.journal.minecraft.chicken.threats": "Chickens are vulnerable to hostile mobs and fall damage.",
+    "markai.journal.minecraft.chicken.taming": "Hold seeds and use them to breed chickens; vanilla chickens cannot be tamed.",
+    "markai.journal.minecraft.zombie.overview": "A hostile undead mob that attacks nearby players and villagers.",
+    "markai.journal.minecraft.zombie.behavior": "Zombies pursue targets, burn in direct sunlight and may call nearby zombies for help.",
+    "markai.journal.minecraft.zombie.habitat": "Zombies commonly appear in darkness and underground areas; they can also spawn during raids or events.",
+    "markai.journal.minecraft.zombie.threats": "Zombies deal melee damage and can overwhelm players in groups; sunlight burns ordinary zombies.",
+    "markai.journal.minecraft.zombie.taming": "Zombies cannot be tamed in vanilla survival. Use light, distance or defensive barriers."
 }
