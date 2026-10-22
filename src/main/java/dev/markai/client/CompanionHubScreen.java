@@ -124,7 +124,7 @@ public final class CompanionHubScreen extends Screen {
     }
     private int groupColumns() { return panelWidth >= 680 ? 4 : panelWidth >= 450 ? 3 : 2; }
     private int groupRows() { return (GROUP_COMMANDS.size() + groupColumns() - 1) / groupColumns(); }
-    private int visibleGroupRows() { return Math.max(1, (contentBottom - contentTop - 28) / 25); }
+    private int visibleGroupRows() { return Math.max(1, (contentBottom - contentTop - 40) / 25); }
     private void initGroupCommands() {
         groupOffset = Math.min(groupOffset, Math.max(0, groupRows() - visibleGroupRows()));
         int columns = groupColumns();
