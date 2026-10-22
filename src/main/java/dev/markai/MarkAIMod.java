@@ -1347,6 +1347,12 @@ public final class MarkAIMod implements ModInitializer {
                 chickenRuntime.stop(chicken);
                 c.action = c.following ? "FOLLOW" : "STAY";
             }
+            case STOP -> {
+                c.following = false;
+                c.dismissed = false;
+                chickenRuntime.stop(chicken);
+                c.action = "STAY";
+            }
             default -> {
                 owner.sendSystemMessage(Component.literal("Эта команда пока доступна только волку."));
                 return 0;
@@ -1746,7 +1752,7 @@ public final class MarkAIMod implements ModInitializer {
         data.put("common_settings", commonSettings(owner));
         var groupHistory = new ArrayList<>(groupState(owner.getUUID()).messages());
         data.put("group_messages", groupHistory);
-        data.put("name", c.living.name); data.put("entity_uuid", c.entity.toString()); data.put("entity_id", entity == null ? -1 : entity.getId());
+        data.put("name", c.living.name); data.put("species", c.species); data.put("entity_uuid", c.entity.toString()); data.put("entity_id", entity == null ? -1 : entity.getId());
         data.put("companion_id", c.id == null ? c.entity.toString() : c.id.toString());
         data.put("health", entity == null ? 0 : entity.getHealth()); data.put("max_health", entity == null ? 0 : entity.getMaxHealth());
         data.put("activity", c.dead ? "DEAD" : entity == null ? "UNLOADED" : c.action);
