@@ -204,8 +204,10 @@ public final class CompanionScreen extends Screen {
         int gapY = rows == 1 ? 0 : Math.min(32, (availableHeight - 20) / (rows - 1));
         for (int i = 0; i < actions.length; i++) {
             String action = actions[i];
-            addButton(label("markai.command." + action), left + 10 + (i % columns) * (w + 3), contentTop + (i / columns) * gapY,
+            Button button = addButton(label("markai.command." + action),
+                left + 10 + (i % columns) * (w + 3), contentTop + (i / columns) * gapY,
                 w, () -> command(action));
+            if (NetworkRules.groupAction(action)) button.setTooltip(Tooltip.create(tr("markai.command.hint.group_modifier")));
         }
     }
     private void initDialogue() {
