@@ -228,8 +228,6 @@ final class WolfWorkRuntime {
      */
     private static Path findCollectionPath(Wolf wolf, ItemEntity item, ServerLevel level) {
         BlockPos itemBlock = item.blockPosition();
-        Path best = null;
-        double bestCost = Double.POSITIVE_INFINITY;
         int[][] heightsAndOffsets = {
             {0, 0, 0}, {-1, 0, 0}, {1, 0, 0}, {0, 0, -1}, {0, 0, 1},
             {-1, 0, -1}, {-1, 0, 1}, {1, 0, -1}, {1, 0, 1},
@@ -241,14 +239,12 @@ final class WolfWorkRuntime {
             Vec3 destination = new Vec3(feet.getX() + .5, feet.getY(), feet.getZ() + .5);
             if (!CompanionSafety.safeNavigationTarget(level, destination)) continue;
             Path candidate = wolf.getNavigation().createPath(feet, 0);
-            if (candidate == null || !candidate.canReach()) continue;
-            double cost = candidate.getNodeCount() + wolf.distanceToSqr(destination) * .001;
-            if (cost < bestCost) {
-                best = candidate;
-                bestCost = cost;
-            }
+            // Candidates are ordered with the item cell first, then adjacent same-level cells,
+            // then one level below/above. Return the first reachable standing cell to avoid
+            // running a full path search for every candidate during normal collection.
+            if (candidate != null && candidate.canReach()) return candidate;
         }
-        return best;
+        return null;
     }
 
     /**
