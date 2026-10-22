@@ -23,6 +23,8 @@
     "markai.tab.memories": "Память",
     "markai.tab.settings": "Настройки",
     "markai.command.spawn": "Новый волк",
+    "markai.command.spawn_chicken": "Новая курица",
+    "markai.command.hint.spawn_chicken": "Создать отдельного компаньона-курицу. Текущий компаньон сохранится.",
     "markai.command.tame": "Приручить волка",
     "markai.command.respawn": "Возродить",
     "markai.command.group_sethome": "Отметить дом у всех",
