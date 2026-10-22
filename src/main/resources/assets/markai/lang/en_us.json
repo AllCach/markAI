@@ -153,5 +153,7 @@
     "markai.hub.chat_hint": "Shared chat with your nearby companions. Address them by actual names. They retain context and may talk to one another, up to 10 companion replies total after your message.",
     "markai.hub.setting.mutual_replies": "Companion conversations (up to 10 replies)",
     "markai.hub.hint.group_enabled": "Enable this panel shared chat. Actual-name addressing works only here. Private conversations always address the selected companion.",
-    "markai.hub.hint.mutual_replies": "Companions may ask each other questions by their actual names. At most 10 companion messages total after your message; they can stop earlier."
+    "markai.hub.hint.mutual_replies": "Companions may ask each other questions by their actual names. At most 10 companion messages total after your message; they can stop earlier.",
+    "markai.species.wolf": "Wolf",
+    "markai.species.chicken": "Chicken"
 }
