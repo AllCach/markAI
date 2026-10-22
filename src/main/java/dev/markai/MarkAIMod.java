@@ -1937,12 +1937,13 @@ public final class MarkAIMod implements ModInitializer {
         if (c == null) return CHAT_JSON.toJson(Map.of("name", "Марк", "activity", "NOT_CREATED",
             "ai_status", "Создайте компаньона", "messages", List.of(), "memories", List.of(),
             "companions", available, "group", groupSnapshot(owner), "group_messages", groupState(owner.getUUID()).messages(),
-            "common_settings", commonSettings(owner)));
+            "common_settings", commonSettings(owner), "field_journal", fieldJournalSnapshot(owner.getUUID())));
         c.memory.flushPending(); c.living.normalize();
         LivingEntity entity = CompanionSpecies.CHICKEN.id().equals(c.species) ? findChicken(c) : find(c);
         AISession session = aiSessions.get(c.id);
         var data = new LinkedHashMap<String, Object>();
         data.put("companions", available);
+        data.put("field_journal", fieldJournalSnapshot(owner.getUUID()));
         data.put("group", groupSnapshot(owner));
         data.put("common_settings", commonSettings(owner));
         var groupHistory = new ArrayList<>(groupState(owner.getUUID()).messages());
