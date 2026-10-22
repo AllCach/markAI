@@ -474,6 +474,8 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                         "Chicken profile must not offer the wolf tame action");
                     check(!labels.contains(text("markai.command.spawn")),
                         "A living chicken profile must not offer the wolf spawn action");
+                    check(labels.contains(text("markai.command.spawn_chicken")),
+                        "The profile must offer a species-correct way to create a chicken companion");
                 });
                 context.takeScreenshot("markai-chicken-profile");
                 context.clickScreenButton("markai.tab.commands");
