@@ -48,14 +48,16 @@ public final class CompanionHubScreen extends Screen {
         input = null; send = null; cancel = null; settingsButtons.clear(); groupButtons.clear(); removeButtons.clear();
         panelWidth = Math.min(820, width - 16); panelHeight = Math.min(500, height - 16);
         left = (width - panelWidth) / 2; top = (height - panelHeight) / 2;
-        contentTop = top + 64; contentBottom = top + panelHeight - 30;
+        contentTop = top + (panelWidth < 440 ? 82 : 64); contentBottom = top + panelHeight - 30;
         button("‹", left + 10, top + 8, 24, () -> MarkAIClient.show(CompanionScreen.Tab.PROFILE, false));
         button("×", left + panelWidth - 30, top + 8, 20, () -> minecraft.gui.setScreen(null));
-        int tabWidth = (panelWidth - 20) / Tab.values().length;
+        int columns = panelWidth < 440 ? 2 : Tab.values().length;
         for (Tab destination : Tab.values()) {
-            String tabLabel = panelWidth < 440 && destination == Tab.GROUP_COMMANDS ? label("markai.hub.tab.group_short") : label("markai.hub.tab." + destination.name().toLowerCase(Locale.ROOT));
-            Button button = button(tabLabel,
-                left + 10 + destination.ordinal() * tabWidth, top + 35, tabWidth - 3, () -> changeTab(destination));
+            int row = destination.ordinal() / columns;
+            int column = destination.ordinal() % columns;
+            int tabWidth = (panelWidth - 20 - (columns - 1) * 3) / columns;
+            Button button = button(label("markai.hub.tab." + destination.name().toLowerCase(Locale.ROOT)),
+                left + 10 + column * (tabWidth + 3), top + 35 + row * 23, tabWidth, () -> changeTab(destination));
             button.active = tab != destination;
         }
         switch (tab) {
