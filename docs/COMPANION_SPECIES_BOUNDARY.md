@@ -12,7 +12,7 @@ This document describes the species boundary in `dev-draft` (project source vers
 - Chicken/Mark has a separate runtime: it adopts the existing chicken through Shift + right-click with seeds, supports the chicken-specific movement commands and species-aware status, selected-companion handling, chat context and ambient dialogue. No player command or GUI button spawns a chicken companion.
 - Chicken does not inherit Wolf combat, inventory or wolf tricks. The personal UI must hide wolf-only controls for Chicken, and server actions must not create a Wolf when `spawn` is invoked with a live Chicken selected.
 - Ambient Chicken dialogue uses a separate context and does not replay player chat history.
-- Ordinary wild chickens are not registered as MarkAI companions unless explicitly spawned/registered through the companion flow.
+- Ordinary wild chickens are not registered automatically. Registration is triggered only by the in-world Shift + right-click interaction with seeds; the same chicken entity is adopted, never replaced by a spawned companion.
 
 ## 0.11.1 UI and controls review
 
