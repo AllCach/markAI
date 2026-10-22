@@ -176,5 +176,13 @@
     "markai.talent.tracker": "Следопыт",
     "markai.talent.nimble": "Проворность",
     "markai.talent.lookout": "Дозорный",
-    "markai.talent.evasive": "Уклонение"
+    "markai.talent.evasive": "Уклонение",
+    "markai.ui.max_level": "МАКСИМУМ",
+    "markai.ui.xp_remaining": "до следующего уровня",
+    "markai.talent.guardian.desc": "Увеличивает максимальное здоровье.",
+    "markai.talent.hunter.desc": "Увеличивает урон атаки.",
+    "markai.talent.tracker.desc": "Увеличивает дистанцию следования.",
+    "markai.talent.nimble.desc": "Увеличивает скорость передвижения курицы.",
+    "markai.talent.lookout.desc": "Увеличивает дистанцию следования курицы.",
+    "markai.talent.evasive.desc": "Курица убегает от ближайших монстров."
 }
