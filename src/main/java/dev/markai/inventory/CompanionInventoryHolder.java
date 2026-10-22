@@ -4,6 +4,6 @@ package dev.markai.inventory;
 public interface CompanionInventoryHolder {
     boolean markai$isCompanion();
     void markai$setCompanion(boolean companion);
-    DogInventory markai$inventory();
+    WolfInventory markai$inventory();
     void markai$releaseCompanion();
 }
