@@ -497,7 +497,7 @@ public final class MarkAIMod implements ModInitializer {
             c.id = previousCompanion == null ? UUID.randomUUID() : previousCompanion.id == null ? previousCompanion.entity : previousCompanion.id;
             c.living = previousCompanion == null ? LivingState.forIdentity(c.id) : previousCompanion.living;
             if (previousCompanion == null && ownedCount > 0) c.living.name = wolfName;
-            if (previousCompanion != null) { c.memory = previousCompanion.memory; c.training = previousCompanion.training; }
+            if (previousCompanion != null) { c.memory = previousCompanion.memory; c.training = previousCompanion.training; c.progression = previousCompanion.progression; }
             if (previousCompanion == null && aiConfig != null) {
                 c.living.settings.followDistance = aiConfig.followDistance;
                 c.living.settings.defense = aiConfig.defensiveBehavior;
@@ -910,6 +910,7 @@ public final class MarkAIMod implements ModInitializer {
             c.training = previous.training;
             c.following = previous.following;
             c.dismissed = previous.dismissed;
+            c.progression = previous.progression;
         }
         c.memory.bind(c.id);
         chicken.setCustomName(Component.literal(c.living.name));
@@ -1037,10 +1038,13 @@ public final class MarkAIMod implements ModInitializer {
             c.action = "IDLE";
             return;
         }
+        chicken.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.25 + c.progression.nimbleRank * 0.025);
         if (!c.following || c.dismissed) {
             chickenRuntime.stop(chicken);
             c.action = "IDLE";
-        } else if (chicken.distanceToSqr(owner) > 9.0) {
+        } else if (c.progression.evasiveRank > 0 && chickenRuntime.evade(chicken, c.progression.evasiveRank)) {
+            c.action = "FLEE";
+        } else if (chicken.distanceToSqr(owner) > Math.pow(3.0 + c.progression.lookoutRank, 2)) {
             chickenRuntime.follow(chicken, owner);
             c.action = "FOLLOW";
         } else {
@@ -1231,6 +1235,7 @@ public final class MarkAIMod implements ModInitializer {
             owner.sendSystemMessage(Component.literal("Возьмите в основную руку мясное лакомство, например жареную говядину.")); return 0;
         }
         c.training.train(trick);
+        awardTaskXp(c, wolf.level().getGameTime(), 4);
         if (!owner.getAbilities().instabuild) treat.shrink(1);
         c.nextLessonAt = now + 40;
         wolf.getLookControl().setLookAt(owner, 30, 30);
