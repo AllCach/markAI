@@ -176,5 +176,13 @@
     "markai.talent.tracker": "Tracker",
     "markai.talent.nimble": "Nimble",
     "markai.talent.lookout": "Lookout",
-    "markai.talent.evasive": "Evasion"
+    "markai.talent.evasive": "Evasion",
+    "markai.ui.max_level": "MAX LEVEL",
+    "markai.ui.xp_remaining": "to next level",
+    "markai.talent.guardian.desc": "Increases maximum health.",
+    "markai.talent.hunter.desc": "Increases attack damage.",
+    "markai.talent.tracker.desc": "Increases follow range.",
+    "markai.talent.nimble.desc": "Increases chicken movement speed.",
+    "markai.talent.lookout.desc": "Increases the chicken follow distance.",
+    "markai.talent.evasive.desc": "Makes the chicken flee nearby monsters."
 }
