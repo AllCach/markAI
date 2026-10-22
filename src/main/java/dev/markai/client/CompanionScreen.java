@@ -131,12 +131,11 @@ public final class CompanionScreen extends Screen {
         if (MarkAIClient.select(id)) { requestedCompanion = id; selectionRequestedAt = System.nanoTime(); updateLabels(); }
     }
     /** On narrow windows retain the original compact profile instead of clipping the controls. */
-    private boolean showCarousel() { return panelWidth >= 350 && profilePreviewBottom() - contentTop >= 165; }
+    private boolean showCarousel() { return NetworkRules.companionId(state().companionId()) && panelWidth >= 350 && profilePreviewBottom() - contentTop >= 165; }
     private int profileActionColumns() { return panelWidth >= 420 ? 4 : 2; }
     private int profileActionCount() {
-        if (!NetworkRules.companionId(state().companionId())) return 3;
-        if (isSelectedDead()) return isChickenSelected() ? 1 : 2;
-        return isChickenSelected() ? 3 : 5;
+        if (!NetworkRules.companionId(state().companionId())) return 0;
+        return isSelectedDead() ? 1 : 2;
     }
     private int profilePreviewBottom() {
         int columns = profileActionColumns();
@@ -179,16 +178,9 @@ public final class CompanionScreen extends Screen {
             nextCard.setTooltip(Tooltip.create(tr("markai.ui.next_companion")));
         }
         boolean hasSelection = NetworkRules.companionId(state().companionId());
-        String[] actions;
-        if (!hasSelection) {
-            actions = new String[] {"spawn", "spawn_chicken", "tame"};
-        } else if (isChickenSelected()) {
-            // A Chicken has no wolf-taming, combat, bag or wolf-spawn controls.
-            actions = isSelectedDead() ? new String[] {"spawn"} : new String[] {"spawn_chicken", "summon", "dismiss"};
-        } else {
-            actions = isSelectedDead() ? new String[] {"spawn", "spawn_chicken"}
-                : new String[] {"spawn", "spawn_chicken", "tame", "summon", "dismiss"};
-        }
+        // Profile is for managing a tamed/registered companion, not creating one.
+        String[] actions = !hasSelection ? new String[0]
+            : isSelectedDead() ? new String[] {"spawn"} : new String[] {"summon", "dismiss"};
         int columns = Math.min(profileActionColumns(), actions.length);
         int rows = (actions.length + columns - 1) / columns;
         int w = (panelWidth - 20 - (columns - 1) * 3) / columns;
@@ -201,10 +193,8 @@ public final class CompanionScreen extends Screen {
             int rowWidth = itemsInRow * w + (itemsInRow - 1) * 3;
             int rowLeft = left + (panelWidth - rowWidth) / 2;
             Button button = addButton(label(key), rowLeft + column * (w + 3), y + row * 23, w, () -> command(action));
-            if (action.equals("spawn_chicken")) button.setTooltip(Tooltip.create(tr("markai.command.hint.spawn_chicken")));
             if (action.equals("summon")) button.setTooltip(Tooltip.create(tr("markai.command.hint.summon")));
             if (action.equals("dismiss")) button.setTooltip(Tooltip.create(tr("markai.command.hint.dismiss")));
-            if (action.equals("tame")) button.setTooltip(Tooltip.create(tr("markai.command.hint.tame")));
         }
     }
     private void initCommands() {
@@ -376,7 +366,7 @@ public final class CompanionScreen extends Screen {
         if (panelWidth >= 550) selected += " · " + localizedState("activity", state().string("activity", "IDLE"));
         graphics.text(font, font.plainSubstrByWidth(selected, panelWidth - 202), left + 116, top + 14, ACCENT);
         switch (tab) {
-            case PROFILE -> drawProfile(graphics, mouseX, mouseY);
+            case PROFILE -> { if (NetworkRules.companionId(state().companionId())) drawProfile(graphics, mouseX, mouseY); else drawTamingGuide(graphics); }
             case COMMANDS -> { }
             case DIALOGUE -> drawDialogue(graphics);
             case MEMORIES -> drawMemories(graphics);
@@ -391,6 +381,14 @@ public final class CompanionScreen extends Screen {
             state().errorNotice() ? 0xFFFFA1A1 : MUTED);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
+    private void drawTamingGuide(GuiGraphicsExtractor graphics) {
+        graphics.text(font, label("markai.ui.taming_guide_title"), left + 16, contentTop + 18, ACCENT);
+        List<String> instructions = List.of(label("markai.ui.taming_guide_wolf"),
+            label("markai.ui.taming_guide_chicken"), label("markai.ui.taming_guide_notes"));
+        drawWrapped(graphics, instructions, left + 16, contentTop + 40, panelWidth - 32,
+            Math.max(24, contentBottom - contentTop - 44), 0, WHITE);
+    }
+
     private void drawProfile(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         int bottom = profilePreviewBottom();
         if (showCarousel()) {
