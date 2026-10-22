@@ -2,8 +2,8 @@ package dev.markai.memory;
 
 import com.google.gson.Gson;
 import dev.markai.ai.OllamaClient;
-import dev.markai.training.DogTraining;
-import dev.markai.training.DogTraining.Trick;
+import dev.markai.training.WolfTraining;
+import dev.markai.training.WolfTraining.Trick;
 
 public final class CompanionStateTest {
     private static int checks;
@@ -32,7 +32,7 @@ public final class CompanionStateTest {
         memory.clear();
         check(memory.history().isEmpty() && json.toJson(memory.context("")).equals("{\"player_reports\":[],\"observed_events\":[]}")
             || memory.history().isEmpty() && json.toJson(memory.context("")).equals("{\"observed_events\":[],\"player_reports\":[]}"), "Explicit forget clears memories");
-        var training = new DogTraining();
+        var training = new WolfTraining();
         check(!training.canTrain(Trick.FETCH), "Fetch requires level two");
         check(training.train(Trick.BARK) && training.train(Trick.BARK) && training.train(Trick.BARK), "Three real lessons learn bark");
         check(training.knows(Trick.BARK) && training.level() == 2 && training.experience() == 15, "Lessons grant level and skill");
@@ -40,11 +40,11 @@ public final class CompanionStateTest {
         check(training.canTrain(Trick.FETCH), "Level unlocks fetch training");
         training.completed(1000); training.completed(1001);
         check(training.experience() == 17, "Repeated commands rate-limit practice XP");
-        training = json.fromJson(json.toJson(training), DogTraining.class);
+        training = json.fromJson(json.toJson(training), WolfTraining.class);
         training.normalize();
         check(training.knows(Trick.BARK) && training.experience() == 17 && training.level() == 2, "Progress survives restart");
         check(Trick.parse("ГОЛОС!") == Trick.BARK && Trick.parse("принеси предмет") == Trick.FETCH && Trick.parse("я приду к тебе") == null, "Only clear trick commands accepted");
-        training = json.fromJson("{\"experience\":99999,\"lessons\":{\"BARK\":99,\"HACK\":1}}", DogTraining.class);
+        training = json.fromJson("{\"experience\":99999,\"lessons\":{\"BARK\":99,\"HACK\":1}}", WolfTraining.class);
         training.normalize();
         check(training.level() == 10 && training.progress(Trick.BARK) == 3, "Loaded progress normalized");
         System.out.println("Companion memory/training: " + checks + " checks passed");
