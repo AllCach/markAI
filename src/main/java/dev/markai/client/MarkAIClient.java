@@ -43,6 +43,8 @@ public final class MarkAIClient implements ClientModInitializer {
         commandKey("come", InputConstants.KEY_B, category);
         commandKey("follow", InputConstants.KEY_M, category);
         commandKey("stay", InputConstants.KEY_N, category);
+        commandKey("rest", InputConstants.KEY_O, category);
+        commandKey("sethome", InputConstants.KEY_P, category);
         commandKey("inventory", InputConstants.KEY_I, category);
         ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.Snapshot.TYPE, (payload, context) -> {
             STATE.update(payload.json());
