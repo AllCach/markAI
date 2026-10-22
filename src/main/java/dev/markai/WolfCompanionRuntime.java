@@ -26,7 +26,7 @@ final class WolfCompanionRuntime {
     private final java.util.function.BooleanSupplier memoryEnabled;
     WolfCompanionRuntime() { this(() -> true); }
     WolfCompanionRuntime(java.util.function.BooleanSupplier memoryEnabled) { this.memoryEnabled = memoryEnabled; }
-    final WorldObserver observer = new WorldObserver();
+    final WolfWorldObserver observer = new WolfWorldObserver();
     private final Map<UUID, Observation> previous = new HashMap<>();
     private final Map<UUID, Goal> behaviorGoals = new HashMap<>();
     private static final class Observation {
