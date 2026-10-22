@@ -210,6 +210,9 @@ public final class MarkAIClient implements ClientModInitializer {
         return NetworkRules.chat(message) && send(new CompanionNetwork.GroupChat(message));
     }
     public static void deleteMemory(String id) { if (NetworkRules.memoryId(id)) send(new CompanionNetwork.MemoryDelete(id)); }
+    public static void journalNote(String speciesId, String text, String noteId) {
+        if (NetworkRules.journalNote(speciesId, text, noteId)) send(new CompanionNetwork.JournalNote(speciesId, text, noteId));
+    }
     public static void setting(String key, String value) { if (NetworkRules.setting(key, value)) send(new CompanionNetwork.Setting(key, value)); }
     private static boolean send(CustomPacketPayload payload) {
         if (available()) { ClientPlayNetworking.send(payload); return true; }
