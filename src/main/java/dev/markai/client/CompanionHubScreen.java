@@ -24,7 +24,7 @@ public final class CompanionHubScreen extends Screen {
     public enum Tab { COMPANIONS, GROUP_COMMANDS, CHAT, SETTINGS }
     private static final int WHITE=0xFFE8EFEA, MUTED=0xFF9DB4A8, ACCENT=0xFF9CDBB5;
     private static final List<String> SETTINGS = List.of("all:defense", "all:autochat", "all:hud", "all:follow_distance", "group_enabled", "mutual_replies");
-    private static final List<String> GROUP_COMMANDS = List.of("follow", "come", "stay", "stop", "attack", "collect", "rest", "wander", "home", "investigate");
+    private static final List<String> GROUP_COMMANDS = List.of("follow", "come", "stay", "stop", "attack", "collect", "rest", "wander", "home", "sethome", "investigate");
     private Tab tab;
     private int left, top, panelWidth, panelHeight, contentTop, contentBottom;
     private int rosterOffset, settingsOffset, chatScroll, groupOffset;
@@ -109,6 +109,19 @@ public final class CompanionHubScreen extends Screen {
             state().notice("status", label("markai.hub.removing"));
         }
     }
+    private static boolean isChickenSpecies(String species) {
+        return species.equals("chicken") || species.equals("minecraft:chicken");
+    }
+    private boolean hasWolfCompanion() {
+        for (var entry : state().companions()) {
+            if (!entry.isJsonObject()) continue;
+            if (!isChickenSpecies(ClientCompanionState.string(entry.getAsJsonObject(), "species", "minecraft:wolf"))) return true;
+        }
+        return false;
+    }
+    private static boolean requiresWolf(String action) {
+        return List.of("attack", "collect", "wander", "home", "sethome", "investigate").contains(action);
+    }
     private int groupColumns() { return panelWidth >= 680 ? 4 : panelWidth >= 450 ? 3 : 2; }
     private int groupRows() { return (GROUP_COMMANDS.size() + groupColumns() - 1) / groupColumns(); }
     private int visibleGroupRows() { return Math.max(1, (contentBottom - contentTop - 28) / 25); }
@@ -176,8 +189,11 @@ public final class CompanionHubScreen extends Screen {
         if (send!=null) send.active=MarkAIClient.available() && ClientCompanionState.bool(state().group(),"can_chat",false) && NetworkRules.chat(input.getValue());
         if (cancel!=null) cancel.active=MarkAIClient.available() && ClientCompanionState.bool(state().group(),"thinking",false);
         for (int i=0;i<groupButtons.size();i++) {
-            groupButtons.get(i).active = MarkAIClient.available() && !state().companions().isEmpty();
-            groupButtons.get(i).setTooltip(Tooltip.create(tr("markai.hub.group_command_hint")));
+            String action = GROUP_COMMANDS.get(groupOffset * groupColumns() + i);
+            boolean compatible = !requiresWolf(action) || hasWolfCompanion();
+            groupButtons.get(i).active = MarkAIClient.available() && !state().companions().isEmpty() && compatible;
+            groupButtons.get(i).setTooltip(Tooltip.create(tr(compatible
+                ? "markai.hub.group_command_hint" : "markai.hub.group_wolf_only_hint")));
         }
         for (int i=0;i<settingsButtons.size();i++) {
             String key=SETTINGS.get(settingsOffset+i), field=settingField(key);
@@ -259,8 +275,9 @@ public final class CompanionHubScreen extends Screen {
             if (entity!=null) InventoryScreen.extractEntityInInventoryFollowsMouse(graphics,x+4,y+20,x+55,y+65,26,0.0F,mouseX,mouseY,entity);
             else graphics.text(font,font.plainSubstrByWidth(label("markai.ui.not_loaded"),48),x+5,y+39,MUTED);
             graphics.text(font,font.plainSubstrByWidth((selected?"● ":"")+name,w-150),x+61,y+8,ACCENT);
-            String species=ClientCompanionState.string(member,"species","wolf");
-            graphics.text(font,font.plainSubstrByWidth(label("markai.species."+species),w-150),x+61,y+21,MUTED);
+            String species=ClientCompanionState.string(member,"species","minecraft:wolf");
+            String speciesKey=isChickenSpecies(species)?"chicken":"wolf";
+            graphics.text(font,font.plainSubstrByWidth(label("markai.species."+speciesKey),w-150),x+61,y+21,MUTED);
             String health=String.format(Locale.ROOT,"%.0f / %.0f",ClientCompanionState.number(member,"health",0),ClientCompanionState.number(member,"max_health",40));
             String activity=CompanionScreen.localizedState("activity",ClientCompanionState.string(member,"activity","IDLE"));
             graphics.text(font,font.plainSubstrByWidth(health+" · "+activity,w-150),x+61,y+34,MUTED);
