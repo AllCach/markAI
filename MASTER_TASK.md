@@ -1,3 +1,5 @@
+> **Current implementation note - 22 October 2026:** this is the original master task and is retained as project history. The current authoritative plan is [WORK_PLAN.md](WORK_PLAN.md), current architecture is [ARCHITECTURE.md](ARCHITECTURE.md), and current checks are [TESTING.md](TESTING.md). MarkAI is no longer wolf-only: Walk is the default wolf companion, Mark is the default chicken companion; Chicken is adopted by crouching + right-clicking an existing wild chicken with seeds. `/mark` is canonical and `/walk` is a compatibility alias. The current `dev-draft` is unverified and is not a release.
+
 # CODEX MASTER TASK - MARKAI: LIVING COMPANION
 
 ## YOUR ROLE
