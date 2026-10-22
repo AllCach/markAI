@@ -16,7 +16,7 @@
 
 ```mermaid
 flowchart LR
-  World[Серверный мир и Fabric-события] --> Perception[WorldObserver и EventHistory]
+  World[Серверный мир и Fabric-события] --> Perception[WolfWorldObserver и EventHistory]
   Perception --> Living[LivingState: личность, эмоции, дом, настройки]
   Living --> Brain[MarkBrain и BehaviorController]
   Brain --> Goals[Серверные цели и навигация Wolf]
