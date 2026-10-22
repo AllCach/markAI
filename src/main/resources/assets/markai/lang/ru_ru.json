@@ -34,6 +34,7 @@
     "markai.command.rest":  "Отдыхай",
     "markai.command.wander":  "Погуляй рядом",
     "markai.command.home":  "Домой",
+    "markai.command.investigate":  "Исследуй",
     "markai.command.sethome":  "Здесь наш дом",
     "markai.command.inventory":  "Инвентарь",
     "markai.ui.send":  "Отправить",
