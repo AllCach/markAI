@@ -191,7 +191,6 @@ public final class CompanionScreen extends Screen {
             if (action.equals("tame")) button.setTooltip(Tooltip.create(tr("markai.command.hint.tame")));
         }
     }
-    private int profileActionColumns() { return panelWidth >= 420 ? 4 : 2; }
     private void initCommands() {
         String[] actions = isChickenSelected()
             ? new String[] {"follow", "come", "stay", "rest", "stop", "summon", "dismiss"}
