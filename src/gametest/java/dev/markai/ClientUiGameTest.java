@@ -478,6 +478,12 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                         "The profile must offer a species-correct way to create a chicken companion");
                 });
                 context.takeScreenshot("markai-chicken-profile");
+                pace(context);
+                context.clickScreenButton(text("markai.command.spawn_chicken"));
+                connection.waitForServerboundPackets();
+                context.waitFor(client -> MarkAIClient.STATE.companions().size() == 3
+                    && MarkAIClient.STATE.string("species", "").equals("minecraft:chicken"));
+                context.takeScreenshot("markai-after-create-chicken");
                 context.clickScreenButton("markai.tab.commands");
                 context.runOnClient(client -> {
                     List<String> labels = client.gui.screen().children().stream().filter(widget -> widget instanceof Button)
