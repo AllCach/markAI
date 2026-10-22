@@ -326,6 +326,22 @@ public final class MarkAIMod implements ModInitializer {
             }
         });
         // Name routing belongs exclusively to the hub's shared channel, never vanilla or private chat.
+        // Intentional Chicken companion taming: sneak + right-click with chicken food.
+        // This keeps ordinary seed feeding/breeding unchanged when the player is not sneaking.
+        UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
+            if (!(entity instanceof Chicken chicken) || hand != InteractionHand.MAIN_HAND
+                    || !player.isShiftKeyDown() || player.isSpectator()
+                    || !player.getItemInHand(hand).is(ItemTags.CHICKEN_FOOD)) return InteractionResult.PASS;
+            if (level.isClientSide()) return InteractionResult.CONSUME;
+            if (!(player instanceof ServerPlayer owner)) return InteractionResult.FAIL;
+            ChickenTamingResult result = adoptChicken(owner, chicken);
+            if (result == ChickenTamingResult.ADOPTED) {
+                if (!owner.getAbilities().instabuild) owner.getItemInHand(hand).shrink(1);
+                level.broadcastEntityEvent(chicken, (byte) 7);
+                return InteractionResult.CONSUME;
+            }
+            return result == ChickenTamingResult.REJECTED ? InteractionResult.FAIL : InteractionResult.CONSUME;
+        });
         UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
             if (!level.isClientSide() && !player.isShiftKeyDown() && hand == InteractionHand.MAIN_HAND
                     && entity instanceof Wolf wolf && player instanceof ServerPlayer owner) {
@@ -614,6 +630,63 @@ public final class MarkAIMod implements ModInitializer {
         // The registry selects it automatically only when this is the first companion.
         configure(companion, wolf); save();
         return wolfNotice(owner, companion.living.name + " стал твоим компаньоном. Shift + ПКМ — сумка; /walk attack — атаковать цель; /walk collect — собрать предметы.", true);
+    }
+
+    private enum ChickenTamingResult { ADOPTED, ALREADY_REGISTERED, REJECTED }
+
+    /** Registers the actual wild chicken being fed; it never replaces it with a spawned entity. */
+    private ChickenTamingResult adoptChicken(ServerPlayer owner, Chicken chicken) {
+        if (!storageHealthy || !owner.isAlive() || owner.isSpectator() || chicken == null || !chicken.isAlive()
+                || chicken.level() != owner.level() || owner.distanceToSqr(chicken) > 64) {
+            popupNotice(owner, "Подойди к курице ближе чем на 8 блоков и попробуй ещё раз.", false);
+            return ChickenTamingResult.REJECTED;
+        }
+        Companion registered = companions.byEntity(chicken.getUUID());
+        if (registered != null) {
+            if (!registered.owner.equals(owner.getUUID())) {
+                popupNotice(owner, "Эта курица уже принадлежит другому компаньону.", false);
+                return ChickenTamingResult.REJECTED;
+            }
+            companions.select(owner.getUUID(), registered.id);
+            save();
+            popupNotice(owner, registered.living.name + " уже твоя курица-компаньон.", true);
+            return ChickenTamingResult.ALREADY_REGISTERED;
+        }
+        int ownedCount = companions.owned(owner.getUUID()).size();
+        if (ownedCount >= CompanionRegistry.MAX_COMPANIONS_PER_OWNER) {
+            popupNotice(owner, "Достигнут предел компаньонов: " + CompanionRegistry.MAX_COMPANIONS_PER_OWNER, false);
+            return ChickenTamingResult.REJECTED;
+        }
+        Companion companion = new Companion();
+        companion.owner = owner.getUUID();
+        companion.entity = chicken.getUUID();
+        companion.id = UUID.randomUUID();
+        companion.species = CompanionSpecies.CHICKEN.id();
+        companion.living = LivingState.forIdentity(companion.id);
+        if (chicken.getCustomName() != null) {
+            String customName = chicken.getCustomName().getString().strip();
+            if (!customName.isBlank() && customName.codePoints().noneMatch(Character::isISOControl))
+                companion.living.name = customName.substring(0, Math.min(32, customName.length()));
+        } else {
+            companion.living.name = ownedCount == 0 ? "Walk" : "Walk " + (ownedCount + 1);
+        }
+        companion.living.normalize();
+        if (aiConfig != null) {
+            companion.living.settings.followDistance = aiConfig.followDistance;
+            companion.living.settings.defense = aiConfig.defensiveBehavior;
+            companion.living.settings.hud = aiConfig.hudVisible;
+        }
+        companion.following = true;
+        companion.dismissed = false;
+        companion.action = "FOLLOW";
+        companion.memory.bind(companion.id);
+        remember(companion, chicken, (ServerLevel) chicken.level());
+        companions.add(companion);
+        chickenRuntime.configure(chicken, companion.living.name);
+        chickenRuntime.follow(chicken, owner);
+        save();
+        popupNotice(owner, companion.living.name + " приручена и добавлена в MarkAI.", true);
+        return ChickenTamingResult.ADOPTED;
     }
 
     private int wolfNotice(ServerPlayer owner, String message, boolean success) {
