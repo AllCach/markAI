@@ -201,7 +201,7 @@ public final class CompanionScreen extends Screen {
     private void initCommands() {
         if (!NetworkRules.companionId(state().companionId())) return;
         String[] actions = isChickenSelected()
-            ? new String[] {"follow", "come", "stay", "rest", "stop", "summon", "dismiss"}
+            ? new String[] {"follow", "come", "stay", "rest", "stop", "nimble", "lookout", "evasive", "summon", "dismiss"}
             : new String[] {"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory", "attack", "collect", "stop", "guardian", "hunter", "tracker"};
         int availableHeight = contentBottom - contentTop;
         int maxRows = Math.max(1, (availableHeight + 3) / 23);
@@ -459,6 +459,17 @@ public final class CompanionScreen extends Screen {
         details.add(label("markai.ui.mood") + ": " + localizedState("mood", state().string("mood", "CALM")));
         details.add(label("markai.ui.trust") + ": " + String.format(Locale.ROOT, "%.0f", state().number("trust", 50)));
         details.add(label("markai.ui.level") + ": " + String.format(Locale.ROOT, "%.0f", state().number("level", 1)));
+        JsonObject progression = ClientCompanionState.object(state().data(), "progression");
+        long xpInto = Math.max(0, Math.round(ClientCompanionState.number(progression, "xp_into_level", 0)));
+        long xpRequired = Math.max(0, Math.round(ClientCompanionState.number(progression, "xp_required", 0)));
+        long xpNext = Math.max(0, Math.round(ClientCompanionState.number(progression, "xp_next", 0)));
+        int points = Math.max(0, (int) Math.round(ClientCompanionState.number(progression, "points", 0)));
+        details.add(label("markai.ui.xp") + ": " + (xpRequired == 0 ? label("markai.ui.max_level") : xpInto + " / " + xpRequired + " (" + xpNext + " " + label("markai.ui.xp_remaining") + ")"));
+        details.add(label("markai.ui.points") + ": " + points);
+        JsonObject talents = ClientCompanionState.object(progression, "talents");
+        for (String talent : List.of("guardian", "hunter", "tracker", "nimble", "lookout", "evasive")) {
+            if (talents.has(talent)) details.add(label("markai.talent." + talent) + ": " + talents.get(talent).getAsInt() + "/3");
+        }
         details.add("AI: " + state().string("ai_status", "—"));
         details.add(label("markai.ui.home") + ": " + state().string("home", "—"));
         String result = state().string("last_action_result", ""); if (!result.isBlank()) details.add(result);
