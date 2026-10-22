@@ -178,7 +178,9 @@ public final class CompanionScreen extends Screen {
     }
     private int profileActionColumns() { return panelWidth >= 420 ? 4 : 2; }
     private void initCommands() {
-        String[] actions = {"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory", "attack", "collect", "stop"};
+        String[] actions = "chicken".equals(state().string("species", "wolf"))
+            ? new String[] {"follow", "stay", "come", "rest", "stop"}
+            : new String[] {"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory", "attack", "collect", "stop"};
         int availableHeight = contentBottom - contentTop;
         int maxRows = Math.max(1, (availableHeight + 3) / 23);
         int columns = Math.max(panelWidth >= 550 ? 4 : 2, (actions.length + maxRows - 1) / maxRows);
