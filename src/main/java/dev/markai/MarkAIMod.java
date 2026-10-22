@@ -1347,12 +1347,6 @@ public final class MarkAIMod implements ModInitializer {
                 chickenRuntime.stop(chicken);
                 c.action = c.following ? "FOLLOW" : "STAY";
             }
-            case STOP -> {
-                c.following = false;
-                c.dismissed = false;
-                chickenRuntime.stop(chicken);
-                c.action = "STAY";
-            }
             default -> {
                 owner.sendSystemMessage(Component.literal("Эта команда пока доступна только волку."));
                 return 0;
