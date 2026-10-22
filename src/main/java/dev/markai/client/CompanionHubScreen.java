@@ -53,7 +53,8 @@ public final class CompanionHubScreen extends Screen {
         button("×", left + panelWidth - 30, top + 8, 20, () -> minecraft.gui.setScreen(null));
         int tabWidth = (panelWidth - 20) / Tab.values().length;
         for (Tab destination : Tab.values()) {
-            Button button = button(label("markai.hub.tab." + destination.name().toLowerCase(Locale.ROOT)),
+            String tabLabel = panelWidth < 440 && destination == Tab.GROUP_COMMANDS ? label("markai.hub.tab.group_short") : label("markai.hub.tab." + destination.name().toLowerCase(Locale.ROOT));
+            Button button = button(tabLabel,
                 left + 10 + destination.ordinal() * tabWidth, top + 35, tabWidth - 3, () -> changeTab(destination));
             button.active = tab != destination;
         }
