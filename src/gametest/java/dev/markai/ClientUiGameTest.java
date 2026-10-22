@@ -472,6 +472,11 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                     wild.setPos(owner.getX() + 2, owner.getY(), owner.getZ() + 2);
                     if (!level.addFreshEntity(wild)) throw new AssertionError("Wild test chicken must enter the world");
                     owner.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.WHEAT_SEEDS));
+                    owner.setShiftKeyDown(false);
+                    InteractionResult vanillaFeeding = UseEntityCallback.EVENT.invoker()
+                        .interact(owner, level, InteractionHand.MAIN_HAND, wild, null);
+                    check(vanillaFeeding == InteractionResult.PASS,
+                        "Normal seed feeding without sneak must remain vanilla");
                     owner.setShiftKeyDown(true);
                     InteractionResult result = UseEntityCallback.EVENT.invoker()
                         .interact(owner, level, InteractionHand.MAIN_HAND, wild, null);
