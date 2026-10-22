@@ -79,18 +79,7 @@ public final class CompanionHubScreen extends Screen {
     private int settingSlots() { return Math.max(1, Math.min(SETTINGS.size(), (contentBottom-contentTop-14)/24)); }
     private void initRoster() {
         rosterSize = state().companions().size();
-        if (rosterSize == 0) {
-            int gap = 6, w = (panelWidth - 28 - gap) / 2, y = contentTop + 52;
-            button(label("markai.command.spawn"), left + 14, y, w, () -> MarkAIClient.action("spawn"));
-            button(label("markai.command.spawn_chicken"), left + 14 + w + gap, y, w,
-                () -> MarkAIClient.action("spawn_chicken"));
-            if (contentBottom - contentTop >= 102) {
-                Button tame = button(label("markai.command.tame"), left + 14, y + 25, panelWidth - 28,
-                    () -> MarkAIClient.action("tame"));
-                tame.setTooltip(Tooltip.create(tr("markai.command.hint.tame")));
-            }
-            return;
-        }
+        if (rosterSize == 0) return;
         rosterOffset = Math.min(rosterOffset, Math.max(0, rosterSize-visibleCards()));
         for (int i=0; i<visibleCards() && i+rosterOffset<rosterSize; i++) {
             JsonObject member = state().companions().get(i+rosterOffset).getAsJsonObject();
