@@ -2,7 +2,7 @@ package dev.markai;
 
 import dev.markai.actions.ActionResult;
 import dev.markai.inventory.CompanionInventoryHolder;
-import dev.markai.inventory.DogInventory;
+import dev.markai.inventory.WolfInventory;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.fabricmc.loader.api.FabricLoader;
@@ -313,7 +313,7 @@ public final class WalkOrdersGameTest {
         setup(helper); ServerPlayer owner = owner(helper); command(owner, "spawn");
         var c = companion(owner); Wolf walk = companionWolf(helper, c);
         Vec3 start = helper.absoluteVec(new Vec3(8, 2, 8)); walk.setPos(start.x, start.y, start.z);
-        DogInventory inventory = bag(walk);
+        WolfInventory inventory = bag(walk);
         for (int slot = 0; slot < inventory.getContainerSize(); slot++) inventory.setItem(slot, new ItemStack(Items.COBBLESTONE, 64));
         inventory.setItem(0, new ItemStack(Items.IRON_INGOT, 62));
         ItemEntity iron = drop(helper, start.add(.4, 0, 0), new ItemStack(Items.IRON_INGOT, 5));
@@ -404,11 +404,11 @@ public final class WalkOrdersGameTest {
     private static void command(ServerPlayer owner, String action) {
         owner.level().getServer().getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "walk " + action);
     }
-    private static DogInventory bag(Wolf wolf) { return ((CompanionInventoryHolder) wolf).markai$inventory(); }
-    private static int count(DogInventory bag, Item item) {
+    private static WolfInventory bag(Wolf wolf) { return ((CompanionInventoryHolder) wolf).markai$inventory(); }
+    private static int count(WolfInventory bag, Item item) {
         int count = 0; for (int slot = 0; slot < bag.getContainerSize(); slot++) if (bag.getItem(slot).is(item)) count += bag.getItem(slot).getCount(); return count;
     }
-    private static int namedCount(DogInventory bag, ItemStack expected) {
+    private static int namedCount(WolfInventory bag, ItemStack expected) {
         int count = 0; for (int slot = 0; slot < bag.getContainerSize(); slot++) if (ItemStack.isSameItemSameComponents(bag.getItem(slot), expected)) count += bag.getItem(slot).getCount(); return count;
     }
     private static Wolf companionWolf(GameTestHelper helper, MarkAIMod.Companion c) {
