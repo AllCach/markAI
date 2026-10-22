@@ -411,7 +411,7 @@ public final class MarkAIMod implements ModInitializer {
         }
         if (command.equals("spawn_chicken")) return spawnChicken(owner, c);
         if (c != null && CompanionSpecies.CHICKEN.id().equals(c.species)
-                && (command.equals("respawn") || command.equals("spawn") && c.dead)) {
+                && (command.equals("respawn") || command.equals("spawn"))) {
             if (!c.dead) {
                 Chicken existing = findChicken(c);
                 owner.sendSystemMessage(Component.literal(existing != null
@@ -726,6 +726,16 @@ public final class MarkAIMod implements ModInitializer {
                 skipped++;
                 continue;
             }
+            if (command.equals("sethome")) {
+                if (!LivingCompanionRuntime.safePathTarget((ServerLevel) wolf.level(), wolf.position())) {
+                    skipped++;
+                    continue;
+                }
+                companion.living.home = new HomeLocation(wolf.level().dimension().identifier().toString(),
+                    wolf.getX(), wolf.getY(), wolf.getZ());
+                accepted++;
+                continue;
+            }
             if (command.equals("attack") && !CompanionCombatRules.commandTargetAllowed(wolf, owner, target)) {
                 skipped++;
                 continue;
@@ -764,7 +774,7 @@ public final class MarkAIMod implements ModInitializer {
             case "attack" -> "атаковать"; case "collect" -> "собирать"; case "stop" -> "остановиться";
             case "follow" -> "за мной"; case "stay" -> "ждать"; case "come" -> "ко мне";
             case "rest" -> "отдыхать"; case "wander" -> "гулять"; case "home" -> "домой";
-            case "investigate" -> "осмотреться"; default -> command;
+            case "sethome" -> "отметить дом"; case "investigate" -> "осмотреться"; default -> command;
         };
     }
     private int spawnChicken(ServerPlayer owner, Companion selected) {
@@ -1748,7 +1758,7 @@ public final class MarkAIMod implements ModInitializer {
         data.put("common_settings", commonSettings(owner));
         var groupHistory = new ArrayList<>(groupState(owner.getUUID()).messages());
         data.put("group_messages", groupHistory);
-        data.put("name", c.living.name); data.put("species", c.species); data.put("entity_uuid", c.entity.toString()); data.put("entity_id", entity == null ? -1 : entity.getId());
+        data.put("name", c.living.name); data.put("species", c.species); data.put("dead", c.dead); data.put("entity_uuid", c.entity.toString()); data.put("entity_id", entity == null ? -1 : entity.getId());
         data.put("companion_id", c.id == null ? c.entity.toString() : c.id.toString());
         data.put("health", entity == null ? 0 : entity.getHealth()); data.put("max_health", entity == null ? 0 : entity.getMaxHealth());
         data.put("activity", c.dead ? "DEAD" : entity == null ? "UNLOADED" : c.action);
