@@ -216,14 +216,15 @@ def betaChecksums = tasks.register('betaChecksums') {
 }
 tasks.register('betaDist', Zip) {
     dependsOn 'build', betaChecksums
-    archiveFileName = "MarkAI-${project.version}-beta.zip"
+    def betaSuffix = project.version.toString().contains('-') ? '' : '-beta'
+    archiveFileName = "MarkAI-${project.version}${betaSuffix}.zip"
     destinationDirectory = layout.projectDirectory.dir('dist')
     preserveFileTimestamps = false
     reproducibleFileOrder = true
     from(betaJar.flatMap { it.archiveFile })
     from(layout.buildDirectory.file("beta/markai-${project.version}.jar.sha256"))
     from('BETA_README.md') { rename { 'README.md' } }
-    from('LICENSE', 'CONFIGURATION.md', 'CHANGELOG.md', 'BETA_TESTING.md', 'start-ollama.ps1')
+    from('LICENSE', 'CONFIGURATION.md', 'CHANGELOG.md', 'BETA_TESTING.md', 'PRE_RELEASE_0.11.2.md', 'start-ollama.ps1')
 }
 tasks.register('productionJarSmokeTest', JavaExec) {
     dependsOn betaJar, betaTestClasses
@@ -251,7 +252,7 @@ tasks.register('verifyBetaDist') {
         def archive = tasks.named('betaDist', Zip).get().archiveFile.get().asFile
         new java.util.zip.ZipFile(archive).withCloseable { zip ->
             def expected = [artifact.name, "${artifact.name}.sha256", 'README.md', 'LICENSE',
-                'CONFIGURATION.md', 'CHANGELOG.md', 'BETA_TESTING.md', 'start-ollama.ps1'] as Set
+                'CONFIGURATION.md', 'CHANGELOG.md', 'BETA_TESTING.md', 'PRE_RELEASE_0.11.2.md', 'start-ollama.ps1'] as Set
             def actual = zip.entries().toList().collect { it.name } as Set
             if (actual != expected) throw new GradleException("Unexpected beta archive contents: ${actual}")
             def digest = java.security.MessageDigest.getInstance('SHA-256')
