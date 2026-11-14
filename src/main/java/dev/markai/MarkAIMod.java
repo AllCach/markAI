@@ -14,6 +14,9 @@ import dev.markai.actions.*;
 import dev.markai.core.*;
 import dev.markai.companion.CompanionRegistry;
 import dev.markai.companion.CompanionProgression;
+import dev.markai.journal.FieldJournal;
+import dev.markai.journal.FieldJournalPage;
+import dev.markai.journal.FieldJournalStore;
 import dev.markai.companion.CompanionStore;
 import dev.markai.companion.GroupChatState;
 import dev.markai.companion.GroupDialogueRound;
@@ -49,6 +52,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityReference;
@@ -91,10 +95,13 @@ public final class MarkAIMod implements ModInitializer {
         + "не отдавай команды игроку и не обещай новое действие. Только action=say, без вопроса.]";
     private final CompanionRegistry<Companion> companions = new CompanionRegistry<>(c -> c.id, c -> c.owner, c -> c.entity);
     private final CompanionStore<Companion> companionStore = new CompanionStore<>(Companion.class);
+    private final FieldJournalStore fieldJournalStore = new FieldJournalStore();
+    private final Map<UUID, FieldJournal> fieldJournals = new LinkedHashMap<>();
     private final Set<UUID> configured = new HashSet<>();
     private MinecraftServer server;
     private int ticks;
     private boolean storageHealthy;
+    private boolean fieldJournalStorageHealthy;
     private AIConfig aiConfig;
     private LlmProvider ollama;
     private ChatJournal chatJournal;
@@ -206,6 +213,36 @@ public final class MarkAIMod implements ModInitializer {
             }
             public void setting(ServerPlayer player, String key, String value) { updateSetting(player, key, value); }
             public void remove(ServerPlayer player, String id) { removeCompanion(player, id); }
+            public void journalNote(ServerPlayer player, String speciesId, String text, String noteId) {
+                if (!fieldJournalStorageHealthy) {
+                    CompanionNetwork.notice(player, "error", "Журнал недоступен для записи: ошибка сохранения.");
+                    return;
+                }
+                FieldJournal journal = fieldJournals.get(player.getUUID());
+                if (journal == null) {
+                    CompanionNetwork.notice(player, "error", "Сначала изучи существо, чтобы добавить заметку.");
+                    return;
+                }
+                boolean changed;
+                if (noteId.equals("0")) changed = journal.addNote(speciesId, text, player.level().getGameTime());
+                else {
+                    long id;
+                    try { id = Long.parseLong(noteId); } catch (NumberFormatException invalid) { return; }
+                    changed = journal.removeNote(speciesId, id);
+                }
+                if (!changed) {
+                    CompanionNetwork.notice(player, "error", "Заметка не сохранена. Проверь вид, текст и лимит записей.");
+                    return;
+                }
+                save();
+                CompanionNetwork.notice(player, "status", noteId.equals("0") ? "Заметка добавлена." : "Заметка удалена.");
+                CompanionNetwork.sendSnapshot(player);
+                CompanionNetwork.sendJournalPage(player);
+            }
+            public String journalPage(ServerPlayer player, String speciesId, int speciesOffset, int noteOffset, int biomeOffset) {
+                return CHAT_JSON.toJson(FieldJournalPage.snapshot(fieldJournals.get(player.getUUID()), speciesId,
+                    speciesOffset, noteOffset, biomeOffset));
+            }
         });
         CompanionCombatRules.register((wolf, target) -> companions.values().stream().filter(c -> c.entity.equals(wolf.getUUID()))
             .anyMatch(c -> c.living.settings.defense && !c.dismissed && LivingCompanionRuntime.validTarget(c, target)));
@@ -214,6 +251,8 @@ public final class MarkAIMod implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(s -> {
             server = s;
             companions.clear();
+            fieldJournals.clear();
+            fieldJournalStorageHealthy = true;
             configured.clear();
             ticks = 0;
             attackMissNoticeAt.clear();
@@ -271,6 +310,15 @@ public final class MarkAIMod implements ModInitializer {
                     LOG.error("Cannot load MarkAI state; spawning disabled to prevent duplicates", e);
                 }
             }
+            Path journalPath = fieldJournalPath();
+            if (Files.exists(journalPath)) {
+                try {
+                    fieldJournals.putAll(fieldJournalStore.read(journalPath));
+                } catch (Exception error) {
+                    fieldJournalStorageHealthy = false;
+                    LOG.error("Cannot load Field Journal; journal writes disabled to protect the existing file", error);
+                }
+            }
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(s -> {
             wolfWork.clear();
@@ -286,7 +334,7 @@ public final class MarkAIMod implements ModInitializer {
             CompanionMemory.shutdownWorkers();
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
-            companions.clear(); configured.clear(); livingRuntime.clear(); wolfWork.clear(); memoryPages.clear(); ownerAutomaticAt.clear(); server = null;
+            companions.clear(); fieldJournals.clear(); configured.clear(); livingRuntime.clear(); wolfWork.clear(); memoryPages.clear(); ownerAutomaticAt.clear(); server = null;
         });
         ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
             invalidateOwnerSessions(entity.getUUID());
@@ -334,6 +382,7 @@ public final class MarkAIMod implements ModInitializer {
             if (++ticks % 10 != 0) return;
             for (Companion c : companions.values()) { tick(c); progressionTick(c); }
             if (ticks % 200 == 0) {
+                observeNearbyEntities(s);
                 save();
                 if (aiConfig != null && aiConfig.debugMode) LOG.info("Companion perception metrics: {}", CHAT_JSON.toJson(livingRuntime.observer.metrics()));
             }
@@ -2436,19 +2485,43 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private Path statePath() { return server.getWorldPath(LevelResource.ROOT).resolve("markai.json"); }
+    private Path fieldJournalPath() { return server.getWorldPath(LevelResource.ROOT).resolve("field-journal.json"); }
     private boolean memoryEnabled() { return aiConfig == null || aiConfig.memoryEnabled; }
 
+    private void observeNearbyEntities(MinecraftServer currentServer) {
+        for (ServerPlayer owner : currentServer.getPlayerList().getPlayers()) {
+            if (!(owner.level() instanceof ServerLevel level) || !owner.isAlive() || owner.isSpectator()) continue;
+            FieldJournal journal = fieldJournals.computeIfAbsent(owner.getUUID(), ignored -> new FieldJournal());
+            for (Mob mob : level.getEntitiesOfClass(Mob.class, owner.getBoundingBox().inflate(32, 8, 32), Mob::isAlive)) {
+                String speciesId = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).toString();
+                String biomeId = level.getBiome(mob.blockPosition()).unwrapKey()
+                    .map(key -> key.identifier().toString()).orElse("");
+                journal.observe(speciesId, mob.getUUID(), biomeId, level.getGameTime());
+            }
+        }
+    }
+
     private void save() {
-        if (server == null || !storageHealthy) return;
-        try {
-            for (Companion c : companions.values()) c.memory.flushPending();
-            Map<UUID, GroupChatState> savedGroups = new LinkedHashMap<>();
-            groupStates.forEach((owner, state) -> savedGroups.put(owner, memoryEnabled() ? state
-                : new GroupChatState(state.enabled(), state.mutualReplies(), List.of())));
-            companionStore.write(statePath(), companions.values(), companions.selections(), savedGroups);
-        } catch (IOException | RuntimeException e) {
-            storageHealthy = false;
-            LOG.error("Cannot save MarkAI state; further commands disabled", e);
+        if (server == null) return;
+        if (storageHealthy) {
+            try {
+                for (Companion c : companions.values()) c.memory.flushPending();
+                Map<UUID, GroupChatState> savedGroups = new LinkedHashMap<>();
+                groupStates.forEach((owner, state) -> savedGroups.put(owner, memoryEnabled() ? state
+                    : new GroupChatState(state.enabled(), state.mutualReplies(), List.of())));
+                companionStore.write(statePath(), companions.values(), companions.selections(), savedGroups);
+            } catch (IOException | RuntimeException e) {
+                storageHealthy = false;
+                LOG.error("Cannot save MarkAI state; further commands disabled", e);
+            }
+        }
+        if (fieldJournalStorageHealthy) {
+            try {
+                fieldJournalStore.write(fieldJournalPath(), fieldJournals);
+            } catch (IOException | RuntimeException e) {
+                fieldJournalStorageHealthy = false;
+                LOG.error("Cannot save Field Journal; further journal writes disabled", e);
+            }
         }
     }
 }
