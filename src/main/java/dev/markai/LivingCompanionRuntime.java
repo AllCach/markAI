@@ -163,7 +163,7 @@ final class LivingCompanionRuntime {
             .stay(!c.following || c.dismissed).command(c.requestedAction, c.commandUntil)
             .interest(investigationTarget(view) != null).home(c.living.home != null && c.living.home.dimension().equals(dimension),
                 c.living.home == null ? 1000 : wolf.position().distanceTo(homePosition(c))).build();
-        BehaviorDecision decision = MarkBrain.think(input, c.living);
+        BehaviorDecision decision = MarkBrain.think(input, c.living, followDistance(c));
         c.action = decision.activity().name();
         boolean sitting = decision.activity() == Activity.STAY || decision.activity() == Activity.REST;
         if (wolf.isOrderedToSit() != sitting) wolf.setOrderedToSit(sitting);
@@ -190,7 +190,7 @@ final class LivingCompanionRuntime {
             boolean reached = switch (c.requestedAction) {
                 case COME -> wolf.distanceTo(owner) <= 2;
                 case RETURN_HOME -> c.living.home != null && wolf.position().distanceTo(homePosition(c)) <= 2;
-                case FOLLOW -> c.following && !wolf.isOrderedToSit() && (wolf.distanceTo(owner) < c.living.settings.followDistance || wolf.getDeltaMovement().horizontalDistanceSqr() > .001);
+                case FOLLOW -> c.following && !wolf.isOrderedToSit() && (wolf.distanceTo(owner) < followDistance(c) || wolf.getDeltaMovement().horizontalDistanceSqr() > .001);
                 case STAY, REST -> wolf.isInSittingPose();
                 case WANDER -> wolf.getDeltaMovement().horizontalDistanceSqr() > .001;
                 case PLAY -> decision.activity() == Activity.PLAY && wolf.getDeltaMovement().lengthSqr() > .001;
@@ -300,7 +300,7 @@ final class LivingCompanionRuntime {
                 Vec3 target = null;
                 double speed = 1.0;
                 switch (c.living.activity()) {
-                    case FOLLOW, SEEK_OWNER -> { if (wolf.distanceTo(owner) > Math.max(1.8, c.living.settings.followDistance * .6)) target = owner.position(); }
+                    case FOLLOW, SEEK_OWNER -> { if (wolf.distanceTo(owner) > Math.max(1.8, followDistance(c) * .6)) target = owner.position(); }
                     case RETURN_HOME -> target = homePosition(c);
                     case INVESTIGATE -> { target = investigationTarget(old.world); if (target != null) wolf.getLookControl().setLookAt(target.x, target.y, target.z); }
                     case WANDER, PLAY -> { if (wolf.getNavigation().isDone()) target = DefaultRandomPos.getPos(wolf, 4, 2); }
@@ -334,5 +334,9 @@ final class LivingCompanionRuntime {
     }
     static boolean safePathTarget(ServerLevel level, Vec3 pos) {
         return CompanionSafety.safeNavigationTarget(level, pos);
+    }
+
+    private static double followDistance(MarkAIMod.Companion companion) {
+        return companion.progression.followDistance(companion.living.settings.followDistance);
     }
 }

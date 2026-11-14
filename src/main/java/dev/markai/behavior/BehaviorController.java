@@ -1,6 +1,7 @@
 package dev.markai.behavior;
 
 import dev.markai.actions.CompanionAction;
+import dev.markai.core.CompanionSettings;
 import dev.markai.core.LivingState;
 import dev.markai.personality.PersonalityEngine;
 import java.util.Map;
@@ -22,7 +23,12 @@ public final class BehaviorController {
     public String reason() { return reason; }
 
     public BehaviorDecision update(BehaviorInput input, LivingState state) {
+        return update(input, state, state == null ? 4.0 : state.settings.followDistance);
+    }
+
+    public BehaviorDecision update(BehaviorInput input, LivingState state, double followDistance) {
         if (input == null || state == null) throw new IllegalArgumentException("Behavior requires a snapshot and state");
+        followDistance = CompanionSettings.finiteClamp(followDistance, 2.0, 22.0, 4.0);
         normalize();
         long now = input.gameTime();
         if (holdUntil > now + 1200 || activitySince > now) holdUntil = now;
@@ -33,9 +39,9 @@ public final class BehaviorController {
         boolean explicitChange = requested != lastCommand || input.manualStay() != lastManualStay;
         lastCommand = requested;
         lastManualStay = input.manualStay();
-        Candidate candidate = select(input, state);
+        Candidate candidate = select(input, state, followDistance);
         if (!explicitChange && candidate.activity != current && candidate.priority < priority
-                && now < holdUntil && canKeepCurrent(input, state)) {
+                && now < holdUntil && canKeepCurrent(input, state, followDistance)) {
             return new BehaviorDecision(current, reason, false, holdUntil, priority);
         }
         boolean changed = candidate.activity != current;
@@ -53,7 +59,7 @@ public final class BehaviorController {
         return new BehaviorDecision(current, reason, changed, holdUntil, priority);
     }
 
-    private Candidate select(BehaviorInput in, LivingState state) {
+    private Candidate select(BehaviorInput in, LivingState state, double followDistance) {
         boolean command = in.commandActive();
         boolean staying = in.manualStay() || command && in.command() == CompanionAction.STAY;
         double healthRatio = in.health() / in.maxHealth();
@@ -75,14 +81,14 @@ public final class BehaviorController {
                 && healthRatio >= criticalHealth && in.hostileDistance() <= 16)
             return candidate(Activity.DEFEND, "defending_against_confirmed_enemy", 80);
         if (command) {
-            Candidate explicit = explicitCommand(in, state);
+            Candidate explicit = explicitCommand(in, state, followDistance);
             if (explicit != null) return explicit;
         }
-        if (!in.ownerVisible() && in.ownerDistance() > state.settings.followDistance * 1.5
+        if (!in.ownerVisible() && in.ownerDistance() > followDistance * 1.5
                 || in.ownerDistance() > 24)
             return candidate(Activity.SEEK_OWNER, "owner_out_of_sight", 60);
-        double followStop = Math.max(1.5, state.settings.followDistance * 0.6);
-        if (in.ownerDistance() > state.settings.followDistance
+        double followStop = Math.max(1.5, followDistance * 0.6);
+        if (in.ownerDistance() > followDistance
                 || current == Activity.FOLLOW && in.ownerDistance() > followStop)
             return candidate(Activity.FOLLOW, "owner_is_farther_than_follow_distance", 50);
         if (threat) return candidate(Activity.ALERT, "observed_nearby_hostile", 45);
@@ -90,7 +96,7 @@ public final class BehaviorController {
         if (state.emotions.energy < restAt
                 || current == Activity.REST && state.emotions.energy < restAt + 18)
             return candidate(Activity.REST, "recovering_energy", 40);
-        if (in.gameTime() < autonomousUntil && priority == 20 && canKeepCurrent(in, state))
+        if (in.gameTime() < autonomousUntil && priority == 20 && canKeepCurrent(in, state, followDistance))
             return candidate(current, reason, 20);
         if (in.gameTime() >= nextAutonomyAt) {
             if (in.interestingTargetAvailable() && PersonalityEngine.wantsToInvestigate(state.personality, state.emotions))
@@ -104,10 +110,10 @@ public final class BehaviorController {
         return candidate(Activity.IDLE, "comfortable_near_owner", 0);
     }
 
-    private Candidate explicitCommand(BehaviorInput in, LivingState state) {
+    private Candidate explicitCommand(BehaviorInput in, LivingState state, double followDistance) {
         return switch (in.command()) {
             case STAY -> candidate(Activity.STAY, "owner_ordered_stay", 90);
-            case FOLLOW -> candidate(in.ownerDistance() > Math.max(1.5, state.settings.followDistance * 0.6)
+            case FOLLOW -> candidate(in.ownerDistance() > Math.max(1.5, followDistance * 0.6)
                 ? Activity.FOLLOW : Activity.IDLE, "owner_ordered_follow", 70);
             case COME -> candidate(in.ownerDistance() > 1.8 ? Activity.SEEK_OWNER : Activity.IDLE,
                 in.ownerDistance() > 1.8 ? "owner_called_companion" : "owner_reached", 70);
@@ -129,11 +135,11 @@ public final class BehaviorController {
         };
     }
 
-    private boolean canKeepCurrent(BehaviorInput in, LivingState state) {
+    private boolean canKeepCurrent(BehaviorInput in, LivingState state, double followDistance) {
         if (in.criticalHazard()) return current == Activity.RETREAT;
         if (in.manualStay() || !in.ownerAvailable()) return current == Activity.STAY;
         return switch (current) {
-            case FOLLOW -> in.ownerDistance() > Math.max(1.5, state.settings.followDistance * 0.6);
+            case FOLLOW -> in.ownerDistance() > Math.max(1.5, followDistance * 0.6);
             case STAY -> in.commandActive() && in.command() == CompanionAction.STAY;
             case DEFEND -> state.settings.defense && in.validEnemyTarget()
                 && (in.ownerUnderAttack() || in.wolfUnderAttack());
@@ -141,11 +147,11 @@ public final class BehaviorController {
             case SEEK_OWNER -> in.ownerDistance() > 1.8;
             case RETURN_HOME -> in.commandActive() && in.command() == CompanionAction.RETURN_HOME
                 && state.home != null && in.homeSameDimension() && in.homeDistance() > 2;
-            case REST -> !in.hostileVisible() && in.ownerDistance() <= state.settings.followDistance + 1;
+            case REST -> !in.hostileVisible() && in.ownerDistance() <= followDistance + 1;
             case INVESTIGATE -> in.interestingTargetAvailable() && !in.hostileVisible()
                 && state.emotions.energy > 25 && (priority != 20 || in.gameTime() < autonomousUntil);
             case PLAY, WANDER -> !in.hostileVisible() && state.emotions.energy > 25
-                && in.ownerDistance() < state.settings.followDistance
+                && in.ownerDistance() < followDistance
                 && (priority != 20 || in.gameTime() < autonomousUntil);
             case ALERT -> in.hostileVisible() || in.commandActive();
             case IDLE -> true;

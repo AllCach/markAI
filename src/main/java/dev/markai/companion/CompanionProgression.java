@@ -203,6 +203,13 @@ public final class CompanionProgression {
 
     public int attributeSignature() { return guardianRank * 31 + hunterRank; }
 
+    /** The Tracker talent extends the owner's configured follow spacing by two blocks per rank. */
+    public double followDistance(double configuredDistance) {
+        double base = Double.isFinite(configuredDistance)
+            ? Math.max(2.0, Math.min(16.0, configuredDistance)) : 4.0;
+        return base + Math.max(0, Math.min(MAX_TALENT_RANK, trackerRank)) * 2.0;
+    }
+
     /** Defensive normalization for old saves, edited JSON and partially missing fields. */
     public void normalize(String species) {
         totalXp = Math.max(0, Math.min(MAX_TOTAL_XP, totalXp));

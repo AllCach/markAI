@@ -1,5 +1,9 @@
 package dev.markai.companion;
 
+import dev.markai.behavior.Activity;
+import dev.markai.behavior.BehaviorInput;
+import dev.markai.brain.MarkBrain;
+import dev.markai.core.LivingState;
 import java.util.ArrayList;
 
 /** Pure progression rules; no Minecraft server or AI provider required. */
@@ -12,6 +16,7 @@ public final class CompanionProgressionTest {
         speciesIsolationAndNormalization();
         travelAndBiomeRewards();
         taskRewardCooldown();
+        trackerChangesRealFollowDecision();
         System.out.println("CompanionProgressionTest: " + checks + " checks passed");
     }
 
@@ -93,6 +98,24 @@ public final class CompanionProgressionTest {
         check(p.rewardCompletedTask(200, 10) == 0, "Task rewards share a anti-farm cooldown");
         check(p.rewardCompletedTask(1_300, 10) == 10, "Task XP becomes available after cooldown");
         check(p.rewardCompletedTask(50, 10) == 10, "A new world-time epoch does not lock progression forever");
+    }
+
+    private static void trackerChangesRealFollowDecision() {
+        CompanionProgression progression = new CompanionProgression();
+        BehaviorInput ownerFiveBlocksAway = BehaviorInput.builder(100).owner(true, true, 5).build();
+        LivingState ordinary = new LivingState();
+        check(MarkBrain.think(ownerFiveBlocksAway, ordinary).activity() == Activity.FOLLOW,
+            "A wolf without Tracker follows an owner five blocks away");
+        progression.trackerRank = 1;
+        LivingState tracked = new LivingState();
+        double effectiveDistance = progression.followDistance(tracked.settings.followDistance);
+        check(effectiveDistance == 6 && MarkBrain.think(ownerFiveBlocksAway, tracked, effectiveDistance).activity() != Activity.FOLLOW,
+            "Tracker rank one changes the actual follow decision at the same owner distance");
+        check(tracked.settings.followDistance == 4,
+            "Talent effects do not overwrite the owner's saved follow-distance preference");
+        progression.trackerRank = 3;
+        check(progression.followDistance(16) == 22,
+            "Tracker spacing is bounded at the maximum setting and talent rank");
     }
 
     private static void check(boolean condition, String message) {

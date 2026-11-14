@@ -5,6 +5,7 @@ import dev.markai.inventory.CompanionInventoryHolder;
 import dev.markai.inventory.DogInventory;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
@@ -19,6 +20,7 @@ import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.animal.cow.Cow;
+import net.minecraft.world.entity.animal.chicken.Chicken;
 import net.minecraft.world.entity.animal.wolf.Wolf;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -26,6 +28,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.EntityHitResult;
 
 import java.lang.reflect.Field;
 import java.util.Map;
@@ -34,26 +37,81 @@ import java.util.UUID;
 /** Real native taming, command combat and lossless item transfers, without a language model. */
 public final class WalkOrdersGameTest {
     @GameTest(structure = "markai-test:arena", maxTicks = 100)
-    public void boneTamingAdoptsTwoWolvesWithoutReplacingTheFirstCompanion(GameTestHelper helper) throws Exception {
-        setup(helper); ServerPlayer owner = owner(helper); Wolf original = wolf(helper, 5, 2, 6);
+    public void vanillaBoneTamingStaysVanillaAndShiftBoneTamingRegistersTwoWolves(GameTestHelper helper) throws Exception {
+        setup(helper); ServerPlayer owner = owner(helper);
+        Wolf vanilla = wolf(helper, 5, 2, 6);
+        owner.setShiftKeyDown(false);
+        nativeBoneTame(helper, owner, vanilla, false);
+        helper.assertTrue(companion(owner) == null && TestCompanions.registry(mod()).owned(owner.getUUID()).isEmpty()
+                && !((CompanionInventoryHolder) vanilla).markai$isCompanion(),
+            "Ordinary bone taming must remain vanilla and must not enroll the wolf");
+
+        Wolf original = wolf(helper, 7, 2, 6);
         original.setCustomName(Component.literal("Walk"));
         ItemStack keepsake = new ItemStack(Items.IRON_INGOT, 3);
         keepsake.set(DataComponents.CUSTOM_NAME, Component.literal("Existing wolf keepsake"));
         bag(original).setItem(8, keepsake.copy()); UUID originalId = original.getUUID();
-        nativeBoneTame(helper, owner, original);
+        nativeBoneTame(helper, owner, original, true);
         MarkAIMod.Companion c = companion(owner);
         helper.assertTrue(c != null && c.entity.equals(originalId) && original.isOwnedBy(owner)
                 && ((CompanionInventoryHolder) original).markai$isCompanion(),
-            "Successful native bone taming must adopt that exact physical wolf for its real owner");
+            "Shift bone taming must register the same physical wolf for its real owner");
         helper.assertTrue(original.getName().getString().equals("Walk")
                 && ItemStack.isSameItemSameComponents(bag(original).getItem(8), keepsake)
                 && bag(original).getItem(8).getCount() == 3,
             "Adoption preserves the existing wolf name, item components, slot and stack size");
-        Wolf second = wolf(helper, 7, 2, 6); nativeBoneTame(helper, owner, second);
+        Wolf second = wolf(helper, 9, 2, 6); nativeBoneTame(helper, owner, second, true);
         helper.assertTrue(companion(owner).entity.equals(originalId) && second.isOwnedBy(owner)
                 && ((CompanionInventoryHolder) second).markai$isCompanion()
-                && TestCompanions.registry(mod()).owned(owner.getUUID()).size() == 2,
-            "Taming a second wolf adds its own companion while preserving the original selection and physical wolf");
+                && TestCompanions.registry(mod()).owned(owner.getUUID()).size() == 2
+                && !((CompanionInventoryHolder) vanilla).markai$isCompanion(),
+            "Shift taming a second wolf adds it once while preserving selection and leaving the vanilla wolf alone");
+        dev.markai.taming.CompanionTamingInteractions.onVanillaWolfTamed(owner, original);
+        helper.assertTrue(TestCompanions.registry(mod()).owned(owner.getUUID()).size() == 2,
+            "Repeated enrollment of the same wolf UUID must not create a duplicate");
+        helper.succeed();
+    }
+
+    @GameTest(structure = "markai-test:arena", maxTicks = 100)
+    public void chickenEnrollmentUsesShiftSeedsAndProtectsVanillaFeedingAndOwnership(GameTestHelper helper) throws Exception {
+        setup(helper); ServerPlayer owner = owner(helper), stranger = owner(helper);
+        Chicken vanilla = helper.spawn(EntityTypes.CHICKEN, new BlockPos(5, 2, 7));
+        owner.getAbilities().instabuild = false;
+        owner.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.WHEAT_SEEDS, 8));
+        owner.setShiftKeyDown(false);
+        var ordinary = UseEntityCallback.EVENT.invoker().interact(owner, owner.level(), InteractionHand.MAIN_HAND,
+            vanilla, new EntityHitResult(vanilla));
+        helper.assertTrue(ordinary == net.minecraft.world.InteractionResult.PASS
+                && owner.getMainHandItem().getCount() == 8 && TestCompanions.registry(mod()).owned(owner.getUUID()).isEmpty(),
+            "Ordinary seed interaction must pass through unchanged and must not enroll the chicken");
+
+        Chicken mark = helper.spawn(EntityTypes.CHICKEN, new BlockPos(7, 2, 7));
+        UUID markId = mark.getUUID();
+        owner.setShiftKeyDown(true);
+        var adopted = UseEntityCallback.EVENT.invoker().interact(owner, owner.level(), InteractionHand.MAIN_HAND,
+            mark, new EntityHitResult(mark));
+        MarkAIMod.Companion companion = TestCompanions.registry(mod()).byEntity(markId);
+        helper.assertTrue(adopted == net.minecraft.world.InteractionResult.CONSUME && companion != null
+                && companion.entity.equals(markId) && companion.species.equals("minecraft:chicken")
+                && owner.getMainHandItem().getCount() == 7,
+            "Shift plus seeds must enroll the existing physical chicken once and consume one seed");
+
+        var duplicate = UseEntityCallback.EVENT.invoker().interact(owner, owner.level(), InteractionHand.MAIN_HAND,
+            mark, new EntityHitResult(mark));
+        helper.assertTrue(duplicate == net.minecraft.world.InteractionResult.CONSUME
+                && TestCompanions.registry(mod()).owned(owner.getUUID()).size() == 1
+                && owner.getMainHandItem().getCount() == 7,
+            "Repeating the interaction must neither duplicate the companion nor consume another seed");
+
+        stranger.setShiftKeyDown(true);
+        stranger.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.WHEAT_SEEDS, 3));
+        var foreign = UseEntityCallback.EVENT.invoker().interact(stranger, stranger.level(), InteractionHand.MAIN_HAND,
+            mark, new EntityHitResult(mark));
+        helper.assertTrue(foreign == net.minecraft.world.InteractionResult.FAIL
+                && TestCompanions.registry(mod()).owned(owner.getUUID()).size() == 1
+                && TestCompanions.registry(mod()).owned(stranger.getUUID()).isEmpty()
+                && stranger.getMainHandItem().getCount() == 3,
+            "Another player must not claim the registered chicken or spend seeds on it");
         helper.succeed();
     }
 
@@ -337,7 +395,8 @@ public final class WalkOrdersGameTest {
             .thenSucceed();
     }
 
-    private static void nativeBoneTame(GameTestHelper helper, ServerPlayer owner, Wolf wolf) {
+    private static void nativeBoneTame(GameTestHelper helper, ServerPlayer owner, Wolf wolf, boolean sneaking) {
+        owner.setShiftKeyDown(sneaking);
         owner.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.BONE, 64));
         for (int attempt = 0; attempt < 64 && !wolf.isTame(); attempt++) wolf.mobInteract(owner, InteractionHand.MAIN_HAND);
         helper.assertTrue(wolf.isTame() && wolf.isOwnedBy(owner), "Native bone interaction must successfully tame the wolf");

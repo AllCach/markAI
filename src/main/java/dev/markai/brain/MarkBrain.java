@@ -27,6 +27,11 @@ public final class MarkBrain {
 
     /** Stateful living-companion controller, separate from the original four-field example API. */
     public static BehaviorDecision think(BehaviorInput world, LivingState state) {
+        return think(world, state, state == null ? 4.0 : state.settings.followDistance);
+    }
+
+    /** Allows a companion talent to adjust follow spacing without rewriting saved settings. */
+    public static BehaviorDecision think(BehaviorInput world, LivingState state, double followDistance) {
         if (world == null || state == null) throw new IllegalArgumentException("World and companion state are required");
         state.normalize();
         Activity previous = state.behavior.current();
@@ -34,7 +39,7 @@ public final class MarkBrain {
             previous == Activity.FOLLOW || previous == Activity.SEEK_OWNER || previous == Activity.WANDER
                 || previous == Activity.RETREAT || previous == Activity.RETURN_HOME || previous == Activity.DEFEND,
             state.personality);
-        return state.behavior.update(world, state);
+        return state.behavior.update(world, state, followDistance);
     }
 
     public static Decision think(WorldState world) {

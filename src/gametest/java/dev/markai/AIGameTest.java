@@ -6,6 +6,11 @@ import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpServer;
 import dev.markai.ai.OllamaClient;
 import dev.markai.ai.LlmProvider;
+import dev.markai.network.CompanionNetwork;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
@@ -14,7 +19,10 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.gametest.framework.GameTestInfo;
 import net.minecraft.gametest.framework.GameTestListener;
 import net.minecraft.gametest.framework.GameTestRunner;
+import net.minecraft.network.Connection;
+import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.animal.wolf.Wolf;
 import net.minecraft.world.entity.vehicle.boat.Boat;
@@ -60,6 +68,11 @@ public final class AIGameTest {
         var expectedObservation = new AtomicReference<JsonObject>();
         var testBoat = new AtomicReference<Boat>();
         var controlledProvider = new AtomicReference<ControlledProvider>();
+        var privateReplies = new CopyOnWriteArrayList<String>();
+        var capturedChannel = new AtomicReference<Channel>();
+        var foreignOwner = new AtomicReference<ServerPlayer>();
+        var foreignPending = new AtomicReference<CompletableFuture<OllamaClient.Reply>>();
+        var firstCompanion = new AtomicReference<MarkAIMod.Companion>();
         var ambientHistorySize = new AtomicInteger();
         var lastDeliveryTick = new java.util.concurrent.atomic.AtomicLong();
         var requests = new AtomicInteger();
@@ -108,9 +121,14 @@ public final class AIGameTest {
             if (!cleaned.compareAndSet(false, true)) return;
             try {
                 server.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark ai off");
+                if (foreignOwner.get() != null) server.getCommands().performPrefixedCommand(foreignOwner.get().createCommandSourceStack(), "mark ai off");
                 clientField.set(mod, original);
             } catch (IllegalAccessException error) { throw new RuntimeException(error); }
             finally {
+                Channel channel = capturedChannel.get();
+                if (channel != null && channel.pipeline().get("markai-private-chat-capture") != null)
+                    channel.pipeline().remove("markai-private-chat-capture");
+                if (foreignPending.get() != null) foreignPending.get().cancel(true);
                 releaseSecondReply.countDown();
                 if (controlledProvider.get() != null) controlledProvider.get().close();
                 client.close(); fake.stop(0); fakeExecutor.shutdownNow();
@@ -298,7 +316,62 @@ public final class AIGameTest {
                         && companion.autoConversation.recentLines().equals(List.of("Слышишь, как шелестят листья?")),
                     "A disabled automatic completion must leave manual memory and recent lines unchanged");
                 helper.assertTrue(controlledProvider.get().calls.size() == 5, "Only the five explicitly requested controlled turns are expected");
-                replaceProvider(mod, client);
+                Channel channel = outboundChannel(owner);
+                channel.pipeline().addLast("markai-private-chat-capture", new ChannelOutboundHandlerAdapter() {
+                    @Override public void write(ChannelHandlerContext context, Object packet, ChannelPromise promise) throws Exception {
+                        if (packet instanceof ClientboundSystemChatPacket chat) privateReplies.add(chat.content().getString());
+                        super.write(context, packet, promise);
+                    }
+                });
+                capturedChannel.set(channel);
+                resetCooldown(mod, owner.getUUID());
+                server.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mo Марк Проверка личного ответа");
+                helper.assertTrue(controlledProvider.get().calls.size() == 6, "/mo sends one request to the controlled provider");
+                controlledProvider.get().calls.get(5).reply().complete(new OllamaClient.Reply("say", "Одно личное сообщение"));
+            })
+            .thenWaitUntil(() -> helper.assertTrue(!pending(mod, owner.getUUID()), "Private reply must complete"))
+            .thenIdle(2)
+            .thenExecute(() -> {
+                long delivered = privateReplies.stream().filter(message -> message.equals("<Марк> Одно личное сообщение")).count();
+                helper.assertTrue(delivered == 1, "/mo must deliver one system-chat reply, not a duplicate");
+
+                firstCompanion.set(currentCompanion(mod, owner.getUUID()));
+                resetCooldown(mod, owner.getUUID());
+                // The earlier observation put the owner in a boat. Dismount and use the
+                // flat arena before the explicit spawn so collision checks have space.
+                owner.stopRiding();
+                if (testBoat.get() != null) { testBoat.get().discard(); testBoat.set(null); }
+                owner.setPos(helper.absoluteVec(new Vec3(12, 2, 12)));
+                server.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mark spawn");
+                helper.assertTrue(currentCompanion(mod, owner.getUUID()) != firstCompanion.get(),
+                    "A second companion must be selected before cancelling the first one's request");
+                server.getCommands().performPrefixedCommand(owner.createCommandSourceStack(), "mo Марк Ответ после смены питомца");
+                helper.assertTrue(controlledProvider.get().calls.size() == 7,
+                    "The nonselected companion must own its pending private request");
+
+                ServerPlayer other = helper.makeMockServerPlayerInLevel();
+                other.setPos(helper.absoluteVec(new Vec3(6, 2, 6)));
+                foreignOwner.set(other);
+                server.getCommands().performPrefixedCommand(other.createCommandSourceStack(), "mark spawn");
+                server.getCommands().performPrefixedCommand(other.createCommandSourceStack(), "mark ai status");
+                CompletableFuture<OllamaClient.Reply> sentinel = new CompletableFuture<>();
+                foreignPending.set(sentinel);
+                setPending(mod, currentCompanion(mod, other.getUUID()).id, sentinel);
+
+                uiCancel(owner);
+                helper.assertTrue(controlledProvider.get().calls.get(6).reply().isCancelled(),
+                    "UI cancel must stop a request from a companion that is no longer selected");
+                helper.assertTrue(!sentinel.isCancelled(), "UI cancel must leave another owner's request untouched");
+                helper.assertTrue(!controlledProvider.get().calls.get(6).reply()
+                    .complete(new OllamaClient.Reply("say", "Отменённый ответ")),
+                    "A cancelled late response cannot be delivered");
+            })
+            .thenIdle(2)
+            .thenExecute(() -> {
+                helper.assertTrue(privateReplies.stream().noneMatch(message -> message.contains("Отменённый ответ")),
+                    "A cancelled nonselected companion must not speak after the cancellation");
+                helper.assertTrue(currentCompanion(mod, owner.getUUID()) != firstCompanion.get(),
+                    "Cancelling the request must preserve the owner's current selection");
                 cleanup.run();
             })
             .thenSucceed();
@@ -320,6 +393,33 @@ public final class AIGameTest {
     private static void replaceProvider(MarkAIMod mod, LlmProvider provider) {
         try {
             var field = MarkAIMod.class.getDeclaredField("ollama"); field.setAccessible(true); field.set(mod, provider);
+        } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
+    }
+
+    private static Channel outboundChannel(ServerPlayer owner) {
+        try {
+            var connectionField = ServerCommonPacketListenerImpl.class.getDeclaredField("connection");
+            connectionField.setAccessible(true);
+            Connection connection = (Connection) connectionField.get(owner.connection);
+            var channelField = Connection.class.getDeclaredField("channel");
+            channelField.setAccessible(true);
+            return (Channel) channelField.get(connection);
+        } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
+    }
+
+    private static void setPending(MarkAIMod mod, UUID companionId, CompletableFuture<OllamaClient.Reply> pending) {
+        try {
+            var sessions = MarkAIMod.class.getDeclaredField("aiSessions"); sessions.setAccessible(true);
+            Object session = ((Map<?, ?>) sessions.get(mod)).get(companionId);
+            var field = session.getClass().getDeclaredField("pending"); field.setAccessible(true);
+            field.set(session, pending);
+        } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
+    }
+
+    private static void uiCancel(ServerPlayer owner) {
+        try {
+            var backend = CompanionNetwork.class.getDeclaredField("backend"); backend.setAccessible(true);
+            ((CompanionNetwork.Backend) backend.get(null)).cancel(owner);
         } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
     }
 

@@ -26,7 +26,7 @@ import dev.markai.chat.ChatJournal;
 import dev.markai.memory.CompanionMemory;
 import dev.markai.training.DogTraining;
 import dev.markai.training.DogTraining.Trick;
-import dev.markai.taming.WolfTamingHooks;
+import dev.markai.taming.CompanionTamingInteractions;
 import dev.markai.inventory.CompanionInventoryHolder;
 import dev.markai.mixin.MobAccessor;
 import net.fabricmc.api.ModInitializer;
@@ -173,7 +173,12 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     @Override public void onInitialize() {
-        WolfTamingHooks.register(this::adoptWolf);
+        CompanionTamingInteractions.register(new CompanionTamingInteractions.Registrar() {
+            @Override public void registerWolf(ServerPlayer owner, Wolf wolf) { adoptWolf(owner, wolf); }
+            @Override public CompanionTamingInteractions.RegistrationResult registerChicken(ServerPlayer owner, Chicken chicken) {
+                return adoptChicken(owner, chicken);
+            }
+        });
         CompanionNetwork.registerServer(new CompanionNetwork.Backend() {
             public String snapshot(ServerPlayer player) { return uiSnapshot(player); }
             public void command(ServerPlayer player, String action) {
@@ -187,7 +192,7 @@ public final class MarkAIMod implements ModInitializer {
             public void chat(ServerPlayer player, String message) { ask(player, message); }
             public void groupChat(ServerPlayer player, String message) { startGroupChat(player, message); }
             public void select(ServerPlayer player, String id) { selectCompanion(player, id); }
-            public void cancel(ServerPlayer player) { cancelRequest(player); }
+            public void cancel(ServerPlayer player) { cancelUiRequest(player); }
             public void deleteMemory(ServerPlayer player, String id) {
                 Companion c = companions.selected(player.getUUID());
                 if (c != null && NetworkRules.memoryId(id)) {
@@ -331,22 +336,8 @@ public final class MarkAIMod implements ModInitializer {
             }
         });
         // Name routing belongs exclusively to the hub's shared channel, never vanilla or private chat.
-        // Intentional Chicken companion taming: sneak + right-click with chicken food.
-        // This keeps ordinary seed feeding/breeding unchanged when the player is not sneaking.
-        UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
-            if (!(entity instanceof Chicken chicken) || hand != InteractionHand.MAIN_HAND
-                    || !player.isShiftKeyDown() || player.isSpectator()
-                    || !player.getItemInHand(hand).is(ItemTags.CHICKEN_FOOD)) return InteractionResult.PASS;
-            if (level.isClientSide()) return InteractionResult.CONSUME;
-            if (!(player instanceof ServerPlayer owner)) return InteractionResult.FAIL;
-            ChickenTamingResult result = adoptChicken(owner, chicken);
-            if (result == ChickenTamingResult.ADOPTED) {
-                if (!owner.getAbilities().instabuild) owner.getItemInHand(hand).shrink(1);
-                level.broadcastEntityEvent(chicken, (byte) 7);
-                return InteractionResult.CONSUME;
-            }
-            return result == ChickenTamingResult.REJECTED ? InteractionResult.FAIL : InteractionResult.CONSUME;
-        });
+        // Only a sneaking bone-tame attempt enrolls a Wolf; ordinary vanilla taming remains vanilla.
+        // Chicken enrollment and the post-tame Wolf hook share the species-aware taming dispatcher.
         UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
             if (!level.isClientSide() && !player.isShiftKeyDown() && hand == InteractionHand.MAIN_HAND
                     && entity instanceof Wolf wolf && player instanceof ServerPlayer owner) {
@@ -365,6 +356,7 @@ public final class MarkAIMod implements ModInitializer {
         });
         UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
             if (!(entity instanceof Wolf wolf) || hand != InteractionHand.MAIN_HAND || !player.isShiftKeyDown()
+                    || !player.getMainHandItem().isEmpty()
                     || !((CompanionInventoryHolder) wolf).markai$isCompanion() || player.isSpectator())
                 return InteractionResult.PASS;
             // The synced marker lets the client suppress feeding/sitting before the menu arrives.
@@ -390,10 +382,13 @@ public final class MarkAIMod implements ModInitializer {
                     "/walk tame | attack | collect | stop | spawn | follow | stay | come | rest | wander | sethome | home | summon | inventory | status | train <приём> | ask <текст> | ai on/off"), false);
                 return 1;
             });
-            for (String name : List.of("spawn", "respawn", "follow", "stay", "status", "skills", "forget", "bark", "come", "fetch",
+            for (String name : List.of("respawn", "follow", "stay", "status", "skills", "forget", "bark", "come", "fetch",
                     "rest", "wander", "home", "sethome", "investigate", "summon", "dismiss", "inventory", "debug", "brain", "mood", "memory", "cancel", "tame", "attack", "collect", "stop")) {
                 root.then(Commands.literal(name).executes(ctx -> command(ctx, name)));
             }
+            root.then(Commands.literal("spawn")
+                .executes(ctx -> command(ctx, "spawn"))
+                .then(Commands.literal("chicken").executes(ctx -> command(ctx, "spawn_chicken"))));
             root.then(Commands.literal("train").then(Commands.argument("trick", StringArgumentType.greedyString())
                 .executes(ctx -> train(ctx.getSource().getPlayerOrException(), StringArgumentType.getString(ctx, "trick")))));
             root.then(Commands.literal("ask").then(Commands.argument("message", StringArgumentType.greedyString())
@@ -421,6 +416,7 @@ public final class MarkAIMod implements ModInitializer {
             return 0;
         }
         Companion c = companions.selected(owner.getUUID());
+        if (command.equals("spawn_chicken")) return spawnChicken(owner, null);
         if (command.startsWith("talent_")) return spendTalent(owner, command.substring(7)) ? 1 : 0;
         if (command.equals("tame")) {
             LivingEntity lookedAt = pointedLiving(owner, 8);
@@ -635,30 +631,28 @@ public final class MarkAIMod implements ModInitializer {
         return wolfNotice(owner, companion.living.name + " стал твоим компаньоном. Shift + ПКМ — сумка; /walk attack — атаковать цель; /walk collect — собрать предметы.", true);
     }
 
-    private enum ChickenTamingResult { ADOPTED, ALREADY_REGISTERED, REJECTED }
-
     /** Registers the actual wild chicken being fed; it never replaces it with a spawned entity. */
-    private ChickenTamingResult adoptChicken(ServerPlayer owner, Chicken chicken) {
+    private CompanionTamingInteractions.RegistrationResult adoptChicken(ServerPlayer owner, Chicken chicken) {
         if (!storageHealthy || !owner.isAlive() || owner.isSpectator() || chicken == null || !chicken.isAlive()
                 || chicken.level() != owner.level() || owner.distanceToSqr(chicken) > 64) {
             popupNotice(owner, "Подойди к курице ближе чем на 8 блоков и попробуй ещё раз.", false);
-            return ChickenTamingResult.REJECTED;
+            return CompanionTamingInteractions.RegistrationResult.REJECTED;
         }
         Companion registered = companions.byEntity(chicken.getUUID());
         if (registered != null) {
             if (!registered.owner.equals(owner.getUUID())) {
                 popupNotice(owner, "Эта курица уже принадлежит другому компаньону.", false);
-                return ChickenTamingResult.REJECTED;
+                return CompanionTamingInteractions.RegistrationResult.REJECTED;
             }
             companions.select(owner.getUUID(), registered.id);
             save();
             popupNotice(owner, registered.living.name + " уже твоя курица-компаньон.", true);
-            return ChickenTamingResult.ALREADY_REGISTERED;
+            return CompanionTamingInteractions.RegistrationResult.ALREADY_REGISTERED;
         }
         int ownedCount = companions.owned(owner.getUUID()).size();
         if (ownedCount >= CompanionRegistry.MAX_COMPANIONS_PER_OWNER) {
             popupNotice(owner, "Достигнут предел компаньонов: " + CompanionRegistry.MAX_COMPANIONS_PER_OWNER, false);
-            return ChickenTamingResult.REJECTED;
+            return CompanionTamingInteractions.RegistrationResult.REJECTED;
         }
         Companion companion = new Companion();
         companion.owner = owner.getUUID();
@@ -689,7 +683,7 @@ public final class MarkAIMod implements ModInitializer {
         chickenRuntime.follow(chicken, owner);
         save();
         popupNotice(owner, companion.living.name + " приручена и добавлена в MarkAI.", true);
-        return ChickenTamingResult.ADOPTED;
+        return CompanionTamingInteractions.RegistrationResult.ADOPTED;
     }
 
     private int wolfNotice(ServerPlayer owner, String message, boolean success) {
@@ -962,7 +956,7 @@ public final class MarkAIMod implements ModInitializer {
     private void configure(Companion c, Wolf wolf) {
         if (c.id == null) c.id = c.entity;
         c.memory.bind(c.id);
-        applyProgression(c);
+        applyProgression(c, wolf);
         wolf.getAttribute(Attributes.FOLLOW_RANGE).setBaseValue(CompanionCombatRules.combatRadius() + c.progression.trackerRank * 4.0);
         if (configured.add(wolf.getUUID())) {
             ((CompanionInventoryHolder) wolf).markai$setCompanion(true);
@@ -1151,6 +1145,12 @@ public final class MarkAIMod implements ModInitializer {
         if (CompanionSpecies.CHICKEN.id().equals(c.species)) return;
         Wolf wolf = find(c);
         if (wolf == null) return;
+        applyProgression(c, wolf);
+    }
+
+    /** Apply attributes to the known entity; looking it up during legacy migration recurses into migrate(). */
+    private void applyProgression(Companion c, Wolf wolf) {
+        c.progression.normalize(c.species);
         wolf.getAttribute(Attributes.MAX_HEALTH).setBaseValue(40.0 + c.progression.guardianRank * 4.0);
         wolf.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(4.0 + c.progression.hunterRank * 1.0);
         wolf.getAttribute(Attributes.FOLLOW_RANGE).setBaseValue(CompanionCombatRules.combatRadius() + c.progression.trackerRank * 4.0);
@@ -1564,6 +1564,16 @@ public final class MarkAIMod implements ModInitializer {
         Companion c = companions.selected(owner.getUUID());
         if (c != null) { cancelCompanionAction(c, owner); save(); }
         CompanionNetwork.notice(owner, "status", "Ожидание и действие отменены.");
+    }
+
+    /** The dialogue UI can outlive a selection change; cancel only this owner's pending requests. */
+    private void cancelUiRequest(ServerPlayer owner) {
+        cancelGroupChat(owner.getUUID(), "Общий разговор остановлен.");
+        for (Companion companion : companions.owned(owner.getUUID())) {
+            AISession session = aiSessions.get(companion.id);
+            if (session != null && session.pending != null) invalidate(session);
+        }
+        CompanionNetwork.notice(owner, "status", "Ожидание ответа отменено.");
     }
 
     private int summon(Companion c, ServerPlayer owner) {
@@ -2130,7 +2140,6 @@ public final class MarkAIMod implements ModInitializer {
                     journal.finish(requestId, "applied", reply, delivered, null);
                     if (!automatic && retainMemory && memoryEnabled()) c.memory.rememberExchange(message, delivered, currentEntity.level().getGameTime());
                     save();
-                    if (commandChat) currentOwner.sendSystemMessage(Component.literal("<" + c.living.name + "> " + delivered.say()));
                     if (companions.selected(c.owner) == c) CompanionNetwork.notice(currentOwner, "reply", delivered.say());
                     CompanionNetwork.sendSnapshot(currentOwner);
                 });

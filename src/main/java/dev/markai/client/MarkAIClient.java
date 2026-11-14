@@ -72,6 +72,7 @@ public final class MarkAIClient implements ClientModInitializer {
             while (quick.consumeClick()) {
                 if (client.gui.screen() != null) continue;
                 // Reuse the existing V binding rather than reserving Q/E or hotbar keys.
+                if (client.hasControlDown()) continue;
                 if (client.hasShiftDown()) cycleCompanion(1);
                 else show(CompanionScreen.Tab.COMMANDS, true);
             }
@@ -146,6 +147,12 @@ public final class MarkAIClient implements ClientModInitializer {
     }
 
     public static boolean available() { return Minecraft.getInstance().getConnection() != null && ClientPlayNetworking.canSend(CompanionNetwork.Request.TYPE); }
+    /** Only gameplay Ctrl+B is reserved for the group Come command when it is actually bound to B. */
+    public static boolean usesComeNarratorShortcut(Minecraft client) {
+        KeyMapping come = KeyMapping.get("key.markai.come");
+        return client != null && client.player != null && client.level != null && client.gui.screen() == null
+            && available() && come != null && come.matches(InputConstants.getKey("key.keyboard.b"));
+    }
     public static void show(CompanionScreen.Tab tab, boolean quickMenu) {
         Minecraft.getInstance().gui.setScreen(new CompanionScreen(tab, quickMenu));
         request();

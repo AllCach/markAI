@@ -42,13 +42,17 @@ public final class InventoryGameTest {
         float health = wolf.getHealth();
         boolean sitting = wolf.isOrderedToSit();
         owner.setShiftKeyDown(true);
+        InteractionResult heldItem = use(owner, wolf);
+        helper.assertTrue(heldItem == InteractionResult.PASS && owner.containerMenu == owner.inventoryMenu,
+            "A held item must leave the shifted wolf interaction to vanilla instead of opening the bag");
+        owner.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
         InteractionResult opened = use(owner, wolf);
         helper.assertTrue(opened != InteractionResult.PASS && owner.containerMenu instanceof ChestMenu,
-            "Shift plus right-click must open the actual server inventory menu");
+            "Shift plus right-click with an empty hand must open the actual server inventory menu");
         ChestMenu menu = (ChestMenu) owner.containerMenu;
         helper.assertTrue(menu.getRowCount() == 1 && menu.getContainer() == holder.markai$inventory(),
             "The menu must operate on the wolf's persistent nine slots");
-        helper.assertTrue(wolf.isOrderedToSit() == sitting && wolf.getHealth() == health && owner.getMainHandItem().getCount() == 2,
+        helper.assertTrue(wolf.isOrderedToSit() == sitting && wolf.getHealth() == health && owner.getMainHandItem().isEmpty(),
             "Opening the bag must neither toggle sitting nor feed the wolf");
 
         owner.getInventory().setItem(9, new ItemStack(Items.DIAMOND, 5));

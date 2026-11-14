@@ -3,5 +3,6 @@
   "package": "dev.markai.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": ["MobAccessor", "WolfInventoryMixin", "MobCombatMixin", "ItemEntityAccessor", "WolfTamingMixin"],
+  "client": ["KeyboardHandlerMixin"],
   "injectors": { "defaultRequire": 1 }
 }
