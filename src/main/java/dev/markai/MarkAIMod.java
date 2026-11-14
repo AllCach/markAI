@@ -346,6 +346,7 @@ public final class MarkAIMod implements ModInitializer {
                     && entity instanceof Wolf wolf && player instanceof ServerPlayer owner) {
                 Companion c = companions.byEntity(wolf.getUUID());
                 if (c != null && c.owner.equals(owner.getUUID()) && wolf.isOwnedBy(owner)) {
+                    if (c.territory != null) { c.territory = null; save(); }
                     wolfWork.cancel(c, wolf);
                     c.requestedAction = null; c.automaticSit = false;
                     c.living.behavior.cancel(level.getGameTime());
