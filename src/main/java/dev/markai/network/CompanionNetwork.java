@@ -200,7 +200,7 @@ public final class CompanionNetwork {
             Limits limits = LIMITS.computeIfAbsent(player.getUUID(), key -> new Limits());
             long now = System.nanoTime();
             if (now < limits.journalAt) return;
-            limits.journalAt = now + 100_000_000L;
+            limits.journalAt = now + 10_000_000L;
             limits.lastJournalRequest = payload;
             sendJournalPage(player);
         });
