@@ -199,7 +199,8 @@ public final class CompanionMemory {
         flushPending();
         var chosenReports = new ArrayList<Map<String, Object>>();
         var chosenEvents = new ArrayList<Map<String, Object>>();
-        for (MemoryEntry entry : select(entries, question)) {
+        List<MemoryEntry> ranked = select(entries, question);
+        for (MemoryEntry entry : ranked) {
             if (entry.sourceType() == SourceType.PLAYER_STATEMENT && chosenReports.size() < 6)
                 chosenReports.add(Map.of("id", entry.id().toString(), "kind", entry.category(),
                     "quote", entry.content(), "game_time", entry.gameTime(), "reliability", "player_report"));
@@ -215,7 +216,7 @@ public final class CompanionMemory {
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("player_reports", chosenReports); result.put("observed_events", chosenEvents);
-        var summaries = select(entries, question).stream().filter(e -> e.sourceType() == SourceType.CONVERSATION_SUMMARY)
+        var summaries = ranked.stream().filter(e -> e.sourceType() == SourceType.CONVERSATION_SUMMARY)
             .limit(1).map(e -> Map.of("text", e.content(), "source", "quoted_player_conversation_summary",
                 "game_time", e.gameTime())).toList();
         if (!summaries.isEmpty()) result.put("conversation_summaries", new ArrayList<>(summaries));

@@ -323,6 +323,8 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                     try {
                         var owned=TestCompanions.registry(mod).owned(ownerId);
                         owned.get(0).living.name="Рекс";owned.get(1).living.name="Луна";
+                        owned.get(0).memory.rememberStatement("Запомни REX_MEMORY_MARKER", instance.overworld().getGameTime());
+                        owned.get(1).memory.rememberStatement("Запомни LUNA_MEMORY_MARKER", instance.overworld().getGameTime());
                         for(var member:owned) { member.living.settings.autochat=false;member.living.settings.defense=true; }
                         ((CompanionNetwork.Backend)field(CompanionNetwork.class,"backend").get(null)).setting(instance.getPlayerList().getPlayer(ownerId),"mutual_replies","false");
                         privateHistory.set(owned.stream().collect(java.util.stream.Collectors.toMap(c->c.id,c->c.memory.history())));
@@ -367,9 +369,15 @@ public final class ClientUiGameTest implements FabricClientGameTest {
                 context.getInput().typeChars("Следующий общий вопрос");
                 context.runOnClient(client->{client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_RETURN,0,0));check(editBox(client.gui.screen()).getValue().equals("Следующий общий вопрос"),"Busy group chat preserves the next draft");});
                 check(groupSpeaker(groupCalls.get(0)).equals("Рекс"),"Shared chat starts with the roster, not the selected Luna");
+                check(groupCalls.get(0).observation().contains("REX_MEMORY_MARKER")
+                    && !groupCalls.get(0).observation().contains("LUNA_MEMORY_MARKER"),
+                    "Rex receives only his own relevant memory in group dialogue");
                 server.runOnServer(instance->groupCalls.get(0).reply().complete(new OllamaClient.Reply("follow","Луна, я рядом.")));
                 context.waitFor(client->groupCalls.size()==2);
                 check(groupSpeaker(groupCalls.get(1)).equals("Луна") && groupCalls.get(1).history().toString().contains("Рекс: Луна, я рядом."),"The other companion sees the labelled shared reply");
+                check(groupCalls.get(1).observation().contains("LUNA_MEMORY_MARKER")
+                    && !groupCalls.get(1).observation().contains("REX_MEMORY_MARKER"),
+                    "Luna receives only her own relevant memory in group dialogue");
                 server.runOnServer(instance->groupCalls.get(1).reply().complete(new OllamaClient.Reply("stay","Рекс, слышу тебя.")));
                 context.waitFor(client->!ClientCompanionState.bool(MarkAIClient.STATE.group(),"thinking",true)&&MarkAIClient.STATE.groupMessages().size()==3);
                 context.waitTicks(25);check(groupCalls.size()==2,"Names in model replies cannot trigger a new round");

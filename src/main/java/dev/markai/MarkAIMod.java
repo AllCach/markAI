@@ -1167,7 +1167,7 @@ public final class MarkAIMod implements ModInitializer {
             c.nextAutomaticConversation = now + 20;
             AISession session = aiSessions.get(c.id);
             if (ollama != null && (session == null || session.enabled && session.pending == null)
-                    && groupRuns.isEmpty() && aiSessions.values().stream().noneMatch(existing -> existing.pending != null)
+                    && !groupRuns.containsKey(c.owner) && !ownerHasPending(c.owner, true)
                     && (session == null || System.currentTimeMillis() >= session.nextRequest)
                     && ambient(c).begin(now, aiConfig.automaticConversationSeconds, chickenAmbientScene(c, chicken, owner))) {
                 ask(owner, c, AMBIENT_PROMPT, true, false);
@@ -1326,10 +1326,10 @@ public final class MarkAIMod implements ModInitializer {
             c.nextAutomaticConversation = now + 20;
             AISession session = aiSessions.get(c.id);
             if (ollama != null && (session == null || session.enabled && session.pending == null)
-                    && groupRuns.isEmpty() && aiSessions.values().stream().noneMatch(s -> s.pending != null)
+                    && !groupRuns.containsKey(c.owner) && !ownerHasPending(c.owner, true)
                     && (session == null || System.currentTimeMillis() >= session.nextRequest)
                     && ambient(c).begin(now, aiConfig.automaticConversationSeconds, ambientScene(c, wolf, owner)))
-                ask(owner, AMBIENT_PROMPT, true);
+                ask(owner, c, AMBIENT_PROMPT, true, false);
         }
     }
 
@@ -1614,6 +1614,26 @@ public final class MarkAIMod implements ModInitializer {
         session.idleUntil = session.wanderUntil = session.lookUntil = session.fleeUntil = 0;
     }
 
+    /** Dialogue is serialized per owner, while independent owners may use the provider concurrently. */
+    private boolean ownerHasPending(UUID ownerId, boolean includeAutomatic) {
+        for (Companion companion : companions.owned(ownerId)) {
+            AISession session = aiSessions.get(companion.id);
+            if (session != null && session.pending != null && (includeAutomatic || !session.pendingAutomatic)) return true;
+        }
+        return false;
+    }
+
+    /** A player message outranks any ambient turn from that player's companions. */
+    private void cancelOwnerAmbientRequests(UUID ownerId) {
+        for (Companion companion : companions.owned(ownerId)) {
+            AISession session = aiSessions.get(companion.id);
+            if (session != null && session.pending != null && session.pendingAutomatic) {
+                invalidate(session);
+                session.nextRequest = 0;
+            }
+        }
+    }
+
     private int performAction(Companion c, ServerPlayer owner, CompanionAction action) {
         if (CompanionSpecies.CHICKEN.id().equals(c.species)) return performChickenAction(c, owner, action);
         Wolf wolf = find(c);
@@ -1842,9 +1862,7 @@ public final class MarkAIMod implements ModInitializer {
     }
     private Map<String, Object> groupSnapshot(ServerPlayer owner) {
         GroupChatState state = groupState(owner.getUUID()); GroupRun run = groupRuns.get(owner.getUUID());
-        boolean busy = !groupRuns.isEmpty() || aiSessions.entrySet().stream().anyMatch(entry -> entry.getValue().pending != null
-            && (!entry.getValue().pendingAutomatic || companions.get(entry.getKey()) == null
-                || !companions.get(entry.getKey()).owner.equals(owner.getUUID())));
+        boolean busy = groupRuns.containsKey(owner.getUUID()) || ownerHasPending(owner.getUUID(), false);
         boolean ready = storageHealthy && state.enabled() && ollama != null && !busy
             && System.currentTimeMillis() >= groupNextRequest.getOrDefault(owner.getUUID(), 0L)
             && companions.owned(owner.getUUID()).stream().anyMatch(c -> groupEligible(c, owner));
@@ -1908,15 +1926,12 @@ public final class MarkAIMod implements ModInitializer {
             int accepted = performGroupCommand(owner, command, addressed);
             UUID roundId = UUID.randomUUID();
             GroupChatState next = state.append(new GroupChatState.Message(roundId, ownerId, "user", owner.getGameProfile().name(), message));
-            next = next.append(new GroupChatState.Message(roundId, addressed.getFirst().id, "assistant", addressed.getFirst().living.name,
-                accepted > 0 ? "Команда принята." : "Не получилось выполнить команду. Проверь цель и расстояние."));
-            groupStates.put(ownerId, next); save(); CompanionNetwork.sendSnapshot(owner); return accepted;
+            groupStates.put(ownerId, next);
+            groupStatus.put(ownerId, accepted > 0 ? "Команда принята." : "Не получилось выполнить команду. Проверь цель и расстояние.");
+            save(); CompanionNetwork.sendSnapshot(owner); return accepted;
         }
         // A manual group message can preempt its owner's ambient request, never another owner's work.
-        for (Companion c : companions.owned(ownerId)) {
-            AISession session = aiSessions.get(c.id);
-            if (session != null && session.pendingAutomatic) { invalidate(session); session.nextRequest = 0; }
-        }
+        cancelOwnerAmbientRequests(ownerId);
         if (ollama == null) {
             int vocals = 0;
             for (Companion c : addressed) {
@@ -1928,7 +1943,7 @@ public final class MarkAIMod implements ModInitializer {
             else CompanionNetwork.notice(owner, "error", "ИИ недоступен. Проверь config/markai.json.");
             return 0;
         }
-        if (!groupRuns.isEmpty() || aiSessions.values().stream().anyMatch(session -> session.pending != null)
+        if (groupRuns.containsKey(ownerId) || ownerHasPending(ownerId, true)
                 || System.currentTimeMillis() < groupNextRequest.getOrDefault(ownerId, 0L)) {
             CompanionNetwork.notice(owner, "error", "Дождись ответа или останови текущий разговор."); return 0;
         }
@@ -1967,22 +1982,25 @@ public final class MarkAIMod implements ModInitializer {
         var expectedLevel = owner.level(); MinecraftServer expectedServer = server;
         GroupDialogueRound.Turn currentTurn = turn;
         run.speaker = speaker.living.name;
-        var context = com.google.gson.JsonParser.parseString(
-            CompanionSpecies.CHICKEN.id().equals(speaker.species)
-                ? chickenDialogueSnapshot(speaker, findChicken(speaker), owner)
-                : snapshot(speaker, wolf, owner, "")
-        ).getAsJsonObject();
-        context.remove("memory"); context.remove("last_action_result");
-        context.getAsJsonObject("living").remove("recent_events");
-        context.addProperty("conversation_mode", "group");
-        context.addProperty("group_turn", turn.peerReply() ? "peer_reply" : "player_reply");
-        context.addProperty("replies_remaining", GroupDialogueRound.MAX_REPLIES-run.round.attempts());
-        context.add("group_members", CHAT_JSON.toJsonTree(groupMembers(owner)));
         GroupChatState.Message peerMessage = null;
         if (turn.peerReply()) {
             for (var entry : groupState(ownerId).messages()) if (entry.roundId().equals(run.round.id())
                     && entry.speakerId().equals(turn.replyTo()) && entry.role().equals("assistant")) peerMessage = entry;
             if (peerMessage == null) { nextGroupTurn(owner, run); return; }
+        }
+        String memoryQuestion = turn.peerReply() ? peerMessage.text() : run.round.question();
+        var context = com.google.gson.JsonParser.parseString(
+            CompanionSpecies.CHICKEN.id().equals(speaker.species)
+                ? chickenDialogueSnapshot(speaker, findChicken(speaker), owner, memoryQuestion)
+                : snapshot(speaker, wolf, owner, memoryQuestion)
+        ).getAsJsonObject();
+        context.remove("last_action_result");
+        context.getAsJsonObject("living").remove("recent_events");
+        context.addProperty("conversation_mode", "group");
+        context.addProperty("group_turn", turn.peerReply() ? "peer_reply" : "player_reply");
+        context.addProperty("replies_remaining", GroupDialogueRound.MAX_REPLIES-run.round.attempts());
+        context.add("group_members", CHAT_JSON.toJsonTree(groupMembers(owner)));
+        if (turn.peerReply()) {
             Companion peer = companions.get(turn.replyTo());
             context.addProperty("reply_to", peer == null ? peerMessage.name() : peer.living.name);
             context.addProperty("group_topic", run.round.question());
@@ -1991,6 +2009,7 @@ public final class MarkAIMod implements ModInitializer {
         for (String key : List.of("nearby_entities", "nearby_hostiles")) {
             if (observation.length() > 8192) { context.remove(key); observation = CHAT_JSON.toJson(context); }
         }
+        if (observation.length() > 8192) { context.remove("memory"); observation = CHAT_JSON.toJson(context); }
         var history = new ArrayList<OllamaClient.ChatMessage>();
         for (var entry : groupState(ownerId).messages()) {
             if (!memoryEnabled() && !entry.roundId().equals(run.round.id())) continue;
@@ -2004,7 +2023,7 @@ public final class MarkAIMod implements ModInitializer {
         String question = turn.peerReply() ? context.get("reply_to").getAsString() + ": " + peerMessage.text() : run.round.question();
         if (question.length() > 512) question = question.substring(0,512);
         CompletableFuture<OllamaClient.Reply> pending;
-        try { pending = ollama.ask(observation, question, List.copyOf(history)); }
+        try { pending = Objects.requireNonNull(ollama.ask(observation, question, List.copyOf(history))); }
         catch (RuntimeException failure) { cancelGroupChat(ownerId, "Не удалось отправить общий запрос к ИИ."); CompanionNetwork.sendSnapshot(owner); return; }
         run.pending = pending;
         pending.whenComplete((reply, error) -> {
@@ -2072,8 +2091,8 @@ public final class MarkAIMod implements ModInitializer {
         data.put("mood", c.living.emotions.mood.name()); data.put("trust", c.living.emotions.trust); data.put("level", c.progression.level());
         data.put("progression", Map.of("xp", c.progression.totalXp, "xp_into_level", c.progression.xpIntoLevel(), "xp_required", c.progression.xpRequiredForLevel(), "xp_next", c.progression.xpToNextLevel(), "points", c.progression.unspentPoints(), "earned_points", c.progression.earnedPoints(), "talents", c.progression.talentSnapshot(c.species)));
         data.put("ai_status", ollama == null ? "Недоступен" : session != null && !session.enabled ? "Выключен" : session != null && session.pending != null && !session.pendingAutomatic ? "Думает…" : "Готов");
-        boolean anotherRequestPending = aiSessions.entrySet().stream().anyMatch(entry -> !entry.getKey().equals(c.id) && entry.getValue().pending != null);
-        data.put("can_chat", groupRuns.isEmpty() && !anotherRequestPending && (session == null || session.pendingAutomatic || session.pending == null && System.currentTimeMillis() >= session.nextRequest));
+        data.put("can_chat", !groupRuns.containsKey(owner.getUUID()) && !ownerHasPending(owner.getUUID(), false)
+            && (session == null || session.pendingAutomatic || session.pending == null && System.currentTimeMillis() >= session.nextRequest));
         data.put("error", session == null ? "" : session.error);
         var settings = new LinkedHashMap<String, Object>(c.living.settings.context());
         settings.put("follow_distance", c.living.settings.followDistance); data.put("settings", settings);
@@ -2108,10 +2127,6 @@ public final class MarkAIMod implements ModInitializer {
 
     private int ask(ServerPlayer owner, String message) { return ask(owner, companions.selected(owner.getUUID()), message, false, false); }
 
-    private int ask(ServerPlayer owner, String message, boolean automatic) {
-        return ask(owner, companions.selected(owner.getUUID()), message, automatic, false);
-    }
-
     private int ask(ServerPlayer owner, Companion target, String message, boolean automatic, boolean commandChat) {
         if (!storageHealthy) {
             owner.sendSystemMessage(Component.literal("MarkAI: ошибка файла состояния; см. журнал.")); return 0;
@@ -2143,9 +2158,7 @@ public final class MarkAIMod implements ModInitializer {
         AISession session = aiSessions.computeIfAbsent(c.id, key -> new AISession());
         if (!automatic) {
             ambient(c).defer(entity.level().getGameTime(), aiConfig == null ? 60 : aiConfig.automaticConversationSeconds);
-            if (session.pending != null && session.pendingAutomatic) {
-                invalidate(session); session.nextRequest = 0;
-            }
+            cancelOwnerAmbientRequests(owner.getUUID());
         }
         Trick requestedTrick = commandChat || namesAnotherCompanion ? null : Trick.parse(message);
         if (requestedTrick != null && (requestedTrick != Trick.COME || c.training.knows(Trick.COME))) return performTrick(owner, requestedTrick);
@@ -2174,7 +2187,7 @@ public final class MarkAIMod implements ModInitializer {
             return 0;
         }
         long nowMillis = System.currentTimeMillis();
-        if (!groupRuns.isEmpty() || session.pending != null || aiSessions.values().stream().anyMatch(s -> s.pending != null)
+        if (groupRuns.containsKey(owner.getUUID()) || ownerHasPending(owner.getUUID(), true)
                 || nowMillis < session.nextRequest) {
             String waiting = session.pending != null ? c.living.name + " ещё думает." : "Подождите несколько секунд между сообщениями.";
             if (!automatic) { owner.sendSystemMessage(Component.literal(waiting)); CompanionNetwork.notice(owner, "status", waiting); } return 0;
@@ -2188,7 +2201,7 @@ public final class MarkAIMod implements ModInitializer {
         long generation = ++session.generation;
         DialogueContext dialogue = CompanionSpecies.CHICKEN.id().equals(c.species)
             ? automatic ? chickenAmbientDialogueContext(c, (Chicken) entity, owner)
-                : new DialogueContext(chickenDialogueSnapshot(c, (Chicken) entity, owner), memoryEnabled() ? c.memory.history() : List.of())
+                : new DialogueContext(chickenDialogueSnapshot(c, (Chicken) entity, owner, message), memoryEnabled() ? c.memory.history() : List.of())
             : automatic ? ambientDialogueContext(c, wolf, owner) : dialogueContext(c, wolf, owner, message);
         String requestMessage = automatic ? AMBIENT_PROMPT : message;
         String context = dialogue.observation();
@@ -2196,7 +2209,17 @@ public final class MarkAIMod implements ModInitializer {
         ChatJournal journal = chatJournal;
         String requestId = retainMemory ? journal.begin(c.owner, c.entity, owner.getGameProfile().name(), requestMessage, context) : null;
         session.cancelTrace = () -> journal.finish(requestId, "cancelled", null, null, null);
-        var pending = ollama.ask(context, requestMessage, dialogue.history());
+        CompletableFuture<OllamaClient.Reply> pending;
+        try { pending = Objects.requireNonNull(ollama.ask(context, requestMessage, dialogue.history())); }
+        catch (RuntimeException failure) {
+            session.cancelTrace = null;
+            session.nextRequest = 0;
+            session.error = "Не удалось отправить запрос к ИИ. Попробуй ещё раз.";
+            journal.finish(requestId, "failed", null, null, failure.toString());
+            if (!automatic) CompanionNetwork.notice(owner, "error", session.error);
+            LOG.warn("Cannot start companion dialogue request ({})", failure.getClass().getSimpleName());
+            return 0;
+        }
         session.pending = pending;
         session.pendingAutomatic = automatic;
         session.pendingMessage = automatic ? "" : message;
@@ -2233,10 +2256,12 @@ public final class MarkAIMod implements ModInitializer {
                             || c.trick != null || (current != null && (c.living.activity() == Activity.DEFEND || c.living.activity() == Activity.RETREAT)))) {
                         journal.finish(requestId, "discarded", reply, null, "Automatic conversation no longer appropriate"); return;
                     }
-                    if (error != null) {
-                        LOG.warn("Local AI request failed: {}", error.toString());
-                        if (automatic) { journal.finish(requestId, "failed", null, null, error.toString()); return; }
-                        Throwable cause = error;
+                    if (error != null || reply == null || reply.say() == null || reply.say().isBlank()
+                            || reply.action() == null) {
+                        Throwable failure = error == null ? new IllegalStateException("AI provider returned an empty reply") : error;
+                        LOG.warn("Local AI request failed: {}", failure.toString());
+                        if (automatic) { journal.finish(requestId, "failed", reply, null, failure.toString()); return; }
+                        Throwable cause = failure;
                         while (cause instanceof java.util.concurrent.CompletionException && cause.getCause() != null) cause = cause.getCause();
                         boolean repeated = cause instanceof dev.markai.ai.RepetitionGuardLlmProvider.RepeatedReplyException;
                         String fallback = repeated
@@ -2249,7 +2274,7 @@ public final class MarkAIMod implements ModInitializer {
                         else if (currentEntity instanceof Chicken)
                             currentOwner.sendSystemMessage(Component.literal(c.living.name + " кудахчет. " + fallback));
                         if (companions.selected(c.owner) == c) CompanionNetwork.notice(currentOwner, "error", fallback);
-                        journal.finish(requestId, "failed", null, new OllamaClient.Reply("say", fallback), error.toString());
+                        journal.finish(requestId, "failed", reply, new OllamaClient.Reply("say", fallback), failure.toString());
                         return;
                     }
                     // Conversation cannot change movement just because the model selected an action.
@@ -2328,7 +2353,7 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private DialogueContext chickenAmbientDialogueContext(Companion c, Chicken chicken, ServerPlayer owner) {
-        var context = com.google.gson.JsonParser.parseString(chickenDialogueSnapshot(c, chicken, owner)).getAsJsonObject();
+        var context = com.google.gson.JsonParser.parseString(chickenDialogueSnapshot(c, chicken, owner, "")).getAsJsonObject();
         context.remove("memory");
         context.remove("last_action_result");
         var living = context.getAsJsonObject("living");
@@ -2348,7 +2373,7 @@ public final class MarkAIMod implements ModInitializer {
         return new DialogueContext(serialized, List.of());
     }
 
-    private String chickenDialogueSnapshot(Companion c, Chicken chicken, ServerPlayer owner) {
+    private String chickenDialogueSnapshot(Companion c, Chicken chicken, ServerPlayer owner, String question) {
         if (chicken == null) throw new IllegalStateException("Chicken companion entity is unavailable");
         var facts = new LinkedHashMap<String, Object>();
         facts.put("companion", Map.of("name", c.living.name, "type", CompanionSpecies.CHICKEN.id(),
@@ -2362,7 +2387,7 @@ public final class MarkAIMod implements ModInitializer {
             "day_time", chicken.level().getOverworldClockTime(), "raining", chicken.level().isRaining(),
             "thundering", chicken.level().isThundering()));
         facts.put("identity", new CompanionIdentity(c.id, c.owner, c.entity));
-        boolean roleplaysRooster = c.memory.history().stream().anyMatch(entry ->
+        boolean roleplaysRooster = memoryEnabled() && c.memory.history().stream().anyMatch(entry ->
             "user".equals(entry.role()) && entry.content().toLowerCase(Locale.ROOT).matches(".*петух.*отыгр.*"));
         facts.put("roleplay_identity", roleplaysRooster ? "петух (игрок попросил отыгрывать роль петуха)" : "курица");
         facts.put("danger_now", false);
@@ -2370,7 +2395,7 @@ public final class MarkAIMod implements ModInitializer {
         facts.put("nearby_entities", List.of());
         facts.put("mode", c.following ? "follow" : "stay");
         facts.put("dimension", c.dimension);
-        facts.put("memory", memoryEnabled() ? c.memory.context("") : Map.of());
+        facts.put("memory", memoryEnabled() ? c.memory.context(question) : Map.of());
         facts.put("training", c.training.context());
         var living = new LinkedHashMap<String, Object>(c.living.context());
         living.remove("personality");

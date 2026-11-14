@@ -362,6 +362,10 @@ public final class AIGameTest {
                 helper.assertTrue(controlledProvider.get().calls.get(6).reply().isCancelled(),
                     "UI cancel must stop a request from a companion that is no longer selected");
                 helper.assertTrue(!sentinel.isCancelled(), "UI cancel must leave another owner's request untouched");
+                JsonObject ownerView = uiSnapshot(mod, owner);
+                helper.assertTrue(ownerView.get("can_chat").getAsBoolean()
+                        && ownerView.getAsJsonObject("group").get("can_chat").getAsBoolean(),
+                    "Another owner's pending request must not block private or group chat");
                 helper.assertTrue(!controlledProvider.get().calls.get(6).reply()
                     .complete(new OllamaClient.Reply("say", "Отменённый ответ")),
                     "A cancelled late response cannot be delivered");
