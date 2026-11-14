@@ -35,6 +35,9 @@ public final class WolfOrderIntent {
             case "стоп", "прекрати", "остановись", "отмена", "отмени", "stop", "cancel", "stop task",
                 "не атакуй", "не нападай", "не собирай", "прекрати атаку", "прекрати сбор", "stop attacking", "stop collecting" -> "stop";
             case "приручи", "приручи волка", "приручить", "приручить волка", "приручение", "tame", "tame wolf" -> "tame";
+            case "охраняй", "охраняй дом", "охраняй территорию", "guard", "guard house", "guard the house" -> "guard";
+            case "патрулируй", "патрулируй территорию", "patrol", "patrol area", "patrol the area" -> "patrol";
+            case "исследуй территорию", "исследуй окрестности", "explore", "explore area", "explore the area" -> "explore";
             default -> COLLECT.matcher(text).matches() ? "collect" : null;
         };
     }

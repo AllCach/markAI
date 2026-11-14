@@ -5,11 +5,11 @@ public final class NetworkRulesTest {
     private static int checks;
     public static void main(String[] args) {
         for (String action : new String[]{"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory",
-                "spawn", "summon", "dismiss", "investigate", "memory_prev", "memory_next", "cancel", "tame", "attack", "collect", "stop",
+                "spawn", "summon", "dismiss", "investigate", "guard", "patrol", "explore", "memory_prev", "memory_next", "cancel", "tame", "attack", "collect", "stop",
                 "talent_guardian", "talent_hunter", "talent_tracker", "talent_nimble", "talent_lookout", "talent_evasive"}) {
             check(NetworkRules.action(action), "Known action " + action);
         }
-        for (String action : new String[]{"attack", "collect", "stop", "come", "stay", "follow", "rest", "wander", "home", "sethome", "investigate"}) {
+        for (String action : new String[]{"attack", "collect", "stop", "come", "stay", "follow", "rest", "wander", "home", "sethome", "investigate", "guard", "patrol", "explore"}) {
             check(NetworkRules.groupAction(action) && NetworkRules.action("all:" + action), "Allowed group action: " + action);
         }
         for (String action : new String[]{"spawn", "spawn_chicken", "respawn", "tame", "inventory", "status", "forget", "cancel",

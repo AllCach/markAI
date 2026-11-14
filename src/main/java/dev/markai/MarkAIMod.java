@@ -102,6 +102,7 @@ public final class MarkAIMod implements ModInitializer {
     private final LivingCompanionRuntime livingRuntime = new LivingCompanionRuntime(this::memoryEnabled);
     private final WolfWorkRuntime wolfWork = new WolfWorkRuntime(this::onWorkCompleted);
     private final ChickenCompanionRuntime chickenRuntime = new ChickenCompanionRuntime();
+    private final TerritoryRuntime territoryRuntime = new TerritoryRuntime();
     private final Map<UUID, Integer> memoryPages = new HashMap<>();
     private final Map<UUID, Long> ownerAutomaticAt = new HashMap<>();
     private final Map<UUID, Long> attackMissNoticeAt = new HashMap<>();
@@ -145,6 +146,7 @@ public final class MarkAIMod implements ModInitializer {
         CompanionMemory memory = new CompanionMemory();
         DogTraining training = new DogTraining();
         CompanionProgression progression = new CompanionProgression();
+        TerritoryTask territory;
         String lastObservedPlace;
         transient long nextMessage;
         transient long nextFallbackVocalAt;
@@ -252,6 +254,7 @@ public final class MarkAIMod implements ModInitializer {
                         if (c.training == null) c.training = new DogTraining();
                         if (c.progression == null) c.progression = new CompanionProgression();
                         c.progression.normalize(c.species);
+                        if (c.territory != null && !c.territory.valid()) c.territory = null;
                         if (c.living == null) c.living = new LivingState();
                         if (c.id == null) c.id = c.entity;
                         if (restored.contains(c.id)) throw new IOException("Duplicate companion identity");
@@ -383,6 +386,7 @@ public final class MarkAIMod implements ModInitializer {
                 return 1;
             });
             for (String name : List.of("respawn", "follow", "stay", "status", "skills", "forget", "bark", "come", "fetch",
+                    "guard", "patrol", "explore",
                     "rest", "wander", "home", "sethome", "investigate", "summon", "dismiss", "inventory", "debug", "brain", "mood", "memory", "cancel", "tame", "attack", "collect", "stop")) {
                 root.then(Commands.literal(name).executes(ctx -> command(ctx, name)));
             }
@@ -520,6 +524,12 @@ public final class MarkAIMod implements ModInitializer {
         }
         if (command.equals("cancel") || command.equals("stop")) { cancelRequest(owner); return 1; }
         if (command.equals("attack") || command.equals("collect")) return startWolfOrder(c, owner, command);
+        if (territoryCommand(command)) {
+            if (!startTerritory(c, owner, command, null))
+                return popupNotice(owner, "Для задания нужен свой живой компаньон рядом и безопасное место.", false);
+            save();
+            return popupNotice(owner, c.living.name + ": " + groupCommandLabel(command) + " территорию.", true);
+        }
         if (command.equals("debug") || command.equals("brain") || command.equals("mood") || command.equals("memory")) {
             AISession session = aiSessions.get(c.id);
             owner.sendSystemMessage(Component.literal(command.equals("memory") ? CHAT_JSON.toJson(c.memory.inspect())
@@ -553,7 +563,7 @@ public final class MarkAIMod implements ModInitializer {
         }
         if (command.equals("summon")) return summon(c, owner);
         if (command.equals("dismiss")) {
-            cancelRequest(owner); cancelTrick(c); c.dismissed = true; c.following = false;
+            cancelRequest(owner); cancelTrick(c); c.territory = null; c.dismissed = true; c.following = false;
             if (CompanionSpecies.CHICKEN.id().equals(c.species)) {
                 Chicken chicken = findChicken(c);
                 if (chicken != null) chickenRuntime.stop(chicken);
@@ -777,6 +787,11 @@ public final class MarkAIMod implements ModInitializer {
                 accepted++;
                 continue;
             }
+            if (territoryCommand(command)) {
+                if (startTerritory(companion, owner, command, owner.position())) accepted++;
+                else skipped++;
+                continue;
+            }
             if (CompanionSpecies.CHICKEN.id().equals(companion.species)) {
                 Chicken chicken = findChicken(companion);
                 if (companion.dead || chicken == null || !chicken.isAlive()
@@ -785,12 +800,14 @@ public final class MarkAIMod implements ModInitializer {
                     continue;
                 }
                 if (command.equals("follow") || command.equals("come")) {
+                    companion.territory = null;
                     companion.following = true;
                     companion.dismissed = false;
                     chickenRuntime.follow(chicken, owner);
                     companion.action = "FOLLOW";
                     accepted++;
                 } else if (command.equals("stay") || command.equals("rest")) {
+                    companion.territory = null;
                     companion.following = false;
                     companion.dismissed = false;
                     chickenRuntime.stop(chicken);
@@ -822,6 +839,7 @@ public final class MarkAIMod implements ModInitializer {
                 continue;
             }
             cancelTrick(companion);
+            companion.territory = null;
             invalidate(aiSessions.computeIfAbsent(companion.id, key -> new AISession()));
             ActionResult result;
             if (command.equals("attack")) {
@@ -855,8 +873,48 @@ public final class MarkAIMod implements ModInitializer {
             case "attack" -> "атаковать"; case "collect" -> "собирать"; case "stop" -> "остановиться";
             case "follow" -> "за мной"; case "stay" -> "ждать"; case "come" -> "ко мне";
             case "rest" -> "отдыхать"; case "wander" -> "гулять"; case "home" -> "домой";
-            case "sethome" -> "отметить дом"; case "investigate" -> "осмотреться"; default -> command;
+            case "sethome" -> "отметить дом"; case "investigate" -> "осмотреться";
+            case "guard" -> "охранять"; case "patrol" -> "патрулировать"; case "explore" -> "исследовать";
+            default -> command;
         };
+    }
+
+    private static boolean territoryCommand(String command) {
+        return command.equals("guard") || command.equals("patrol") || command.equals("explore");
+    }
+
+    /** Assigns an independent job to an owned, loaded animal; group jobs share the owner's anchor. */
+    private boolean startTerritory(Companion c, ServerPlayer owner, String command, Vec3 sharedAnchor) {
+        if (!storageHealthy || c == null || !c.owner.equals(owner.getUUID()) || c.dead || c.dismissed
+                || !owner.isAlive() || owner.isSpectator()) return false;
+        LivingEntity entity = CompanionSpecies.CHICKEN.id().equals(c.species) ? findChicken(c) : find(c);
+        if (entity == null || entity.level() != owner.level() || owner.distanceToSqr(entity) > 256) return false;
+        if (entity instanceof Wolf wolf && !wolf.isOwnedBy(owner)) return false;
+        ServerLevel level = (ServerLevel) entity.level();
+        Vec3 anchor = sharedAnchor == null ? entity.position() : sharedAnchor;
+        if (!LivingCompanionRuntime.safePathTarget(level, anchor)) return false;
+        TerritoryTask.Mode mode = entity instanceof Chicken ? TerritoryTask.Mode.LOOKOUT : switch (command) {
+            case "guard" -> TerritoryTask.Mode.GUARD;
+            case "patrol" -> TerritoryTask.Mode.PATROL;
+            case "explore" -> TerritoryTask.Mode.EXPLORE;
+            default -> throw new IllegalArgumentException("Unknown territory order");
+        };
+        cancelTrick(c);
+        AISession session = aiSessions.get(c.id);
+        if (session != null) invalidate(session);
+        if (entity instanceof Wolf wolf) {
+            wolfWork.cancel(c, wolf);
+            wolf.setTarget(null);
+            wolf.setOrderedToSit(false);
+            c.expectedSit = false; c.sitObserved = true; c.automaticSit = false;
+        } else chickenRuntime.stop((Chicken) entity);
+        c.requestedAction = null;
+        c.living.behavior.cancel(level.getGameTime());
+        c.territory = new TerritoryTask(mode, level.dimension().identifier().toString(), anchor, 32);
+        c.following = false;
+        c.dismissed = false;
+        c.action = mode.name();
+        return true;
     }
     private int spawnChicken(ServerPlayer owner, Companion selected) {
         if (!owner.isAlive() || owner.isSpectator()) return 0;
@@ -946,7 +1004,8 @@ public final class MarkAIMod implements ModInitializer {
             return attackMissNotice(owner, "Укажи взглядом на допустимую цель в пределах " + CompanionCombatRules.combatRadius()
                 + " блоков. Игроков и приручённых питомцев атаковать нельзя.");
         }
-        cancelTrick(companion); invalidate(aiSessions.computeIfAbsent(companion.id, key -> new AISession()));
+        cancelTrick(companion); companion.territory = null;
+        invalidate(aiSessions.computeIfAbsent(companion.id, key -> new AISession()));
         ActionResult result = command.equals("attack") ? wolfWork.attack(companion, wolf, owner, target) : wolfWork.collect(companion, wolf, owner);
         owner.sendSystemMessage(Component.literal(companion.living.name + ": " + result.message()));
         CompanionNetwork.notice(owner, result.status() == ActionResult.Status.FAILED ? "error" : "status", result.message());
@@ -1033,7 +1092,9 @@ public final class MarkAIMod implements ModInitializer {
             return;
         }
         chicken.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.25 + c.progression.nimbleRank * 0.025);
-        if (!c.following || c.dismissed) {
+        boolean territorial = territoryRuntime.tickChicken(c, chicken, owner, chickenRuntime);
+        if (territorial) { /* The lookout keeps its own bounded navigation and threat response. */ }
+        else if (!c.following || c.dismissed) {
             chickenRuntime.stop(chicken);
             c.action = "IDLE";
         } else if (c.progression.evasiveRank > 0 && chickenRuntime.evade(chicken, c.progression.evasiveRank)) {
@@ -1184,7 +1245,7 @@ public final class MarkAIMod implements ModInitializer {
             }
             if (c.living.emotions.fear < 40 && wolf.getTarget() == null) bark(wolf);
             wolf.setOrderedToSit(!c.following);
-        } else if (c.trick == null && c.sitObserved && c.expectedSit != wolf.isOrderedToSit()) {
+        } else if (c.territory == null && c.trick == null && c.sitObserved && c.expectedSit != wolf.isOrderedToSit()) {
             wolfWork.cancel(c, wolf);
             // Respect the owner's normal right-click and the wolf standing up to retaliate.
             c.following = !wolf.isOrderedToSit();
@@ -1198,7 +1259,12 @@ public final class MarkAIMod implements ModInitializer {
                 || wolf.getHealth() < wolf.getMaxHealth() * .25 && wolf.getTarget() != null)) cancelTrick(c);
         if (c.trick != null) { c.action = c.trick.kind.name(); c.memory.flushPending(); return; }
         if (wolfWork.tick(c, wolf, owner)) { c.memory.flushPending(); return; }
-        livingRuntime.tick(c, wolf, owner);
+        TerritoryTask previousTerritory = c.territory;
+        if (!territoryRuntime.tickWolf(c, wolf, owner)) livingRuntime.tick(c, wolf, owner);
+        if (previousTerritory != null && c.territory == null) {
+            if ("EXPLORE_COMPLETE".equals(c.action)) awardTaskXp(c, level.getGameTime(), 8);
+            else save();
+        }
         long now = level.getGameTime();
         if (companions.selected(c.owner) == c && c.living.settings.autochat && aiConfig != null
                 && aiConfig.automaticConversationSeconds > 0 && now >= c.nextAutomaticConversation && wolf.distanceTo(owner) <= 12
@@ -1294,6 +1360,7 @@ public final class MarkAIMod implements ModInitializer {
             }
         }
         cancelTrick(c);
+        c.territory = null;
         wolfWork.cancel(c, wolf);
         invalidate(aiSessions.computeIfAbsent(c.id, key -> new AISession()));
         c.nextTrickAt = now + 40;
@@ -1500,6 +1567,7 @@ public final class MarkAIMod implements ModInitializer {
         wolfWork.cancel(c, wolf);
         cancelTrick(c); invalidate(aiSessions.computeIfAbsent(c.id, key -> new AISession()));
         ActionResult result = livingRuntime.request(c, wolf, owner, action);
+        if (result.status() != ActionResult.Status.FAILED) c.territory = null;
         owner.sendSystemMessage(Component.literal(c.living.name + ": " + result.message()));
         CompanionNetwork.notice(owner, result.status() == ActionResult.Status.FAILED ? "error" : "status", result.message());
         save(); return result.status() == ActionResult.Status.FAILED ? 0 : 1;
@@ -1513,18 +1581,21 @@ public final class MarkAIMod implements ModInitializer {
         }
         switch (action) {
             case FOLLOW, COME -> {
+                c.territory = null;
                 c.following = true;
                 c.dismissed = false;
                 chickenRuntime.follow(chicken, owner);
                 c.action = "FOLLOW";
             }
             case STAY, REST -> {
+                c.territory = null;
                 c.following = false;
                 c.dismissed = false;
                 chickenRuntime.stop(chicken);
                 c.action = "STAY";
             }
             case CANCEL, IDLE -> {
+                c.territory = null;
                 chickenRuntime.stop(chicken);
                 c.action = c.following ? "FOLLOW" : "STAY";
             }
@@ -1539,6 +1610,7 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     private void cancelCompanionAction(Companion c, ServerPlayer owner) {
+        c.territory = null;
         if (CompanionSpecies.CHICKEN.id().equals(c.species)) {
             Chicken chicken = findChicken(c);
             if (chicken != null) chickenRuntime.stop(chicken);

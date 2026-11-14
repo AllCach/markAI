@@ -6,12 +6,12 @@ import java.util.UUID;
 /** Pure input rules, shared by packet handlers and deterministic tests. */
 public final class NetworkRules {
     private static final Set<String> ACTIONS = Set.of("spawn", "status", "follow", "stay", "come", "rest", "wander",
-        "home", "sethome", "investigate", "summon", "dismiss", "inventory", "debug", "brain", "mood", "memory", "memory_prev", "memory_next", "cancel",
+        "home", "sethome", "investigate", "guard", "patrol", "explore", "summon", "dismiss", "inventory", "debug", "brain", "mood", "memory", "memory_prev", "memory_next", "cancel",
         "tame", "attack", "collect", "stop", "group_cancel");
     // Ctrl modifies only commands that make sense for multiple living companions.
     private static final Set<String> GROUP_ACTIONS = Set.of(
         "attack", "collect", "stop", "come", "stay", "follow",
-        "rest", "wander", "home", "sethome", "investigate");
+        "rest", "wander", "home", "sethome", "investigate", "guard", "patrol", "explore");
 
     private static final Set<String> TALENTS = Set.of("guardian", "hunter", "tracker", "nimble", "lookout", "evasive");
 

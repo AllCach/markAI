@@ -201,8 +201,8 @@ public final class CompanionScreen extends Screen {
     private void initCommands() {
         if (!NetworkRules.companionId(state().companionId())) return;
         String[] actions = isChickenSelected()
-            ? new String[] {"follow", "come", "stay", "rest", "stop", "nimble", "lookout", "evasive", "summon", "dismiss"}
-            : new String[] {"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory", "attack", "collect", "stop", "guardian", "hunter", "tracker"};
+            ? new String[] {"follow", "come", "stay", "rest", "guard", "patrol", "explore", "stop", "nimble", "lookout", "evasive", "summon", "dismiss"}
+            : new String[] {"follow", "stay", "come", "rest", "wander", "home", "sethome", "inventory", "attack", "collect", "guard", "patrol", "explore", "stop", "guardian", "hunter", "tracker"};
         int availableHeight = contentBottom - contentTop;
         int maxRows = Math.max(1, (availableHeight + 3) / 23);
         int columns = Math.max(panelWidth >= 550 ? 4 : 2, (actions.length + maxRows - 1) / maxRows);

@@ -280,7 +280,7 @@ final class LivingCompanionRuntime {
         Goal behaviorGoal = new Goal() {
             { setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK)); }
             @Override public boolean canUse() {
-                return !c.workActive && (!c.ownerUnavailable || c.living.activity() == Activity.RETREAT) && c.trick == null && switch (c.living.activity()) {
+                return c.territory == null && !c.workActive && (!c.ownerUnavailable || c.living.activity() == Activity.RETREAT) && c.trick == null && switch (c.living.activity()) {
                     case FOLLOW, SEEK_OWNER, RETURN_HOME, INVESTIGATE, PLAY, WANDER, RETREAT, ALERT, IDLE -> true;
                     default -> false;
                 };

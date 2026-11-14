@@ -14,12 +14,16 @@ public final class WolfOrderIntentTest {
             "please collect drops and resources", "pick up drops", "collect all nearby items");
         expect("stop", "Walk, стоп", "не атакуй", "прекрати сбор", "остановись", "stop attacking", "cancel", "пожалуйста, не собирай");
         expect("tame", "приручи волка", "приручить", "приручение", "tame wolf", "Марк, приручи, пожалуйста!");
+        expect("guard", "охраняй дом", "Walk, охраняй территорию", "guard the house");
+        expect("patrol", "патрулируй территорию", "Walk, patrol the area");
+        expect("explore", "исследуй окрестности", "Walk, explore the area");
 
         expect(null, null, "", " ", "ты умеешь атаковать?", "Walk, атакуй?", "Атакуй — это приказ?", "я атакую зомби", "волк атакует овцу",
             "помнишь, как ты собирал мясо", "Я сказал ему атакуй", "«атакуй»", "\"attack\"", "собери ресурсы когда я скажу",
             "потом атакуй", "если увидишь зомби, атакуй", "не собирайся атаковать", "Хочу, чтобы ты собирал мясо",
             "Расскажи про приручение", "Можно приручить волка?", "Я нашёл ресурсы и мясо", "collect drops if safe", "stop means what?",
             "собери мясо и ресурсы и расскажи историю", "/mark attack", "attack\ncollect", "collect\u0000", "x".repeat(513));
+        expect(null, "ты можешь охранять дом?", "помнишь, как патрулировал", "explore if safe");
 
         // The server accepts only a fixed vocabulary even after an owner adds a familiar address or courtesy.
         for (String order : List.of("атакуй", "собери мясо и ресурсы", "tame wolf")) {

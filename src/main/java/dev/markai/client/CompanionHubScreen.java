@@ -24,7 +24,7 @@ public final class CompanionHubScreen extends Screen {
     public enum Tab { COMPANIONS, GROUP_COMMANDS, CHAT, SETTINGS }
     private static final int WHITE=0xFFE8EFEA, MUTED=0xFF9DB4A8, ACCENT=0xFF9CDBB5;
     private static final List<String> SETTINGS = List.of("all:defense", "all:autochat", "all:hud", "all:follow_distance", "group_enabled", "mutual_replies");
-    private static final List<String> GROUP_COMMANDS = List.of("follow", "come", "stay", "stop", "attack", "collect", "rest", "wander", "home", "sethome", "investigate");
+    private static final List<String> GROUP_COMMANDS = List.of("follow", "come", "stay", "stop", "attack", "collect", "rest", "wander", "home", "sethome", "investigate", "guard", "patrol", "explore");
     private Tab tab;
     private int left, top, panelWidth, panelHeight, contentTop, contentBottom;
     private int rosterOffset, settingsOffset, chatScroll, groupOffset;
