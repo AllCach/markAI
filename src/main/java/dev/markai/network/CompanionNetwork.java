@@ -19,6 +19,7 @@ import java.util.UUID;
 /** Typed owner-scoped UI transport. Fabric invokes all server handlers on the server thread. */
 public final class CompanionNetwork {
     public static final int MAX_SNAPSHOT = 24576;
+    public static final int MAX_JOURNAL_PAGE = 16384;
     private static final Logger LOG = LoggerFactory.getLogger("markai-network");
     private static final Map<UUID, Limits> LIMITS = new HashMap<>();
     private static Backend backend;
@@ -34,9 +35,11 @@ public final class CompanionNetwork {
         void select(ServerPlayer player, String companionId);
         void remove(ServerPlayer player, String companionId);
         void journalNote(ServerPlayer player, String speciesId, String text, String noteId);
+        String journalPage(ServerPlayer player, String speciesId, int speciesOffset, int noteOffset, int biomeOffset);
     }
     private static final class Limits {
-        long refreshAt, actionAt, chatAt, rateNoticeAt;
+        long refreshAt, actionAt, chatAt, rateNoticeAt, journalAt;
+        JournalPageRequest lastJournalRequest = new JournalPageRequest(0, "", 0, 0);
     }
     private CompanionNetwork() {}
     private static <T extends CustomPacketPayload> CustomPacketPayload.Type<T> type(String name) {
@@ -81,6 +84,21 @@ public final class CompanionNetwork {
             ByteBufCodecs.stringUtf8(20), JournalNote::noteId, JournalNote::new);
         @Override public Type<JournalNote> type() { return TYPE; }
     }
+    public record JournalPageRequest(int speciesOffset, String speciesId, int noteOffset, int biomeOffset) implements CustomPacketPayload {
+        public static final Type<JournalPageRequest> TYPE = CompanionNetwork.type("ui_journal_page_request");
+        public static final StreamCodec<RegistryFriendlyByteBuf, JournalPageRequest> CODEC = StreamCodec.composite(
+            ByteBufCodecs.VAR_INT, JournalPageRequest::speciesOffset,
+            ByteBufCodecs.stringUtf8(128), JournalPageRequest::speciesId,
+            ByteBufCodecs.VAR_INT, JournalPageRequest::noteOffset,
+            ByteBufCodecs.VAR_INT, JournalPageRequest::biomeOffset, JournalPageRequest::new);
+        @Override public Type<JournalPageRequest> type() { return TYPE; }
+    }
+    public record JournalPage(String json) implements CustomPacketPayload {
+        public static final Type<JournalPage> TYPE = CompanionNetwork.type("ui_journal_page");
+        public static final StreamCodec<RegistryFriendlyByteBuf, JournalPage> CODEC = StreamCodec.composite(
+            ByteBufCodecs.stringUtf8(MAX_JOURNAL_PAGE), JournalPage::json, JournalPage::new);
+        @Override public Type<JournalPage> type() { return TYPE; }
+    }
     public record Select(String companionId) implements CustomPacketPayload {
         public static final Type<Select> TYPE = CompanionNetwork.type("ui_select");
         public static final StreamCodec<RegistryFriendlyByteBuf, Select> CODEC = StreamCodec.composite(ByteBufCodecs.stringUtf8(36), Select::companionId, Select::new);
@@ -124,9 +142,11 @@ public final class CompanionNetwork {
         c2s.register(GroupChat.TYPE, GroupChat.CODEC);
         c2s.register(MemoryDelete.TYPE, MemoryDelete.CODEC); c2s.register(Setting.TYPE, Setting.CODEC);
         c2s.register(JournalNote.TYPE, JournalNote.CODEC);
+        c2s.register(JournalPageRequest.TYPE, JournalPageRequest.CODEC);
         c2s.register(Select.TYPE, Select.CODEC); c2s.register(Remove.TYPE, Remove.CODEC);
         var s2c = PayloadTypeRegistry.clientboundPlay();
         s2c.register(Snapshot.TYPE, Snapshot.CODEC); s2c.register(Notice.TYPE, Notice.CODEC); s2c.register(Popup.TYPE, Popup.CODEC);
+        s2c.register(JournalPage.TYPE, JournalPage.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(Request.TYPE, (payload, context) -> {
             ServerPlayer player = context.player();
             Limits limits = LIMITS.computeIfAbsent(player.getUUID(), key -> new Limits());
@@ -171,6 +191,19 @@ public final class CompanionNetwork {
                 throw new IllegalArgumentException("Invalid field journal note");
             backend.journalNote(context.player(), payload.speciesId(), payload.text(), payload.noteId());
         }));
+        ServerPlayNetworking.registerGlobalReceiver(JournalPageRequest.TYPE, (payload, context) -> {
+            ServerPlayer player = context.player();
+            if (!NetworkRules.journalPage(payload.speciesId(), payload.speciesOffset(), payload.noteOffset(), payload.biomeOffset())) {
+                notice(player, "error", "Invalid journal page request.");
+                return;
+            }
+            Limits limits = LIMITS.computeIfAbsent(player.getUUID(), key -> new Limits());
+            long now = System.nanoTime();
+            if (now < limits.journalAt) return;
+            limits.journalAt = now + 100_000_000L;
+            limits.lastJournalRequest = payload;
+            sendJournalPage(player);
+        });
         ServerPlayNetworking.registerGlobalReceiver(Select.TYPE, (payload, context) -> mutate(context.player(), () -> {
             if (!NetworkRules.companionId(payload.companionId())) throw new IllegalArgumentException("Invalid companion id");
             backend.select(context.player(), payload.companionId());
@@ -216,6 +249,23 @@ public final class CompanionNetwork {
         } catch (RuntimeException error) {
             LOG.warn("Companion UI snapshot failed ({})", error.getClass().getSimpleName());
             notice(player, "error", "Состояние компаньона временно недоступно.");
+        }
+    }
+
+    public static void sendJournalPage(ServerPlayer player) {
+        if (backend == null || !ServerPlayNetworking.canSend(player, JournalPage.TYPE)) return;
+        try {
+            JournalPageRequest request = LIMITS.computeIfAbsent(player.getUUID(), key -> new Limits()).lastJournalRequest;
+            String json = backend.journalPage(player, request.speciesId(), request.speciesOffset(),
+                request.noteOffset(), request.biomeOffset());
+            if (json == null || json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_JOURNAL_PAGE) {
+                notice(player, "error", "Journal page is too large.");
+                return;
+            }
+            ServerPlayNetworking.send(player, new JournalPage(json));
+        } catch (RuntimeException error) {
+            LOG.warn("Journal page failed ({})", error.getClass().getSimpleName());
+            notice(player, "error", "Journal is temporarily unavailable.");
         }
     }
 

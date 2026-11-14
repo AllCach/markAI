@@ -11,6 +11,7 @@ import net.fabricmc.api.Environment;
 @Environment(EnvType.CLIENT)
 public final class ClientCompanionState {
     private JsonObject state = new JsonObject();
+    private JsonObject journalPage = new JsonObject();
     private String notice = "";
     private String noticeKind = "status";
     private long noticeUntil;
@@ -39,7 +40,14 @@ public final class ClientCompanionState {
             updatedAt = System.nanoTime();
         } catch (RuntimeException error) { notice("error", "Не удалось прочитать состояние компаньона."); }
     }
-    public void clear() { state = new JsonObject(); clearNotice(); updatedAt = 0; }
+    public void updateJournalPage(String json) {
+        try {
+            var parsed = JsonParser.parseString(json);
+            if (parsed.isJsonObject()) journalPage = parsed.getAsJsonObject();
+        } catch (RuntimeException ignored) { }
+    }
+    public JsonObject journalPage() { return journalPage; }
+    public void clear() { state = new JsonObject(); journalPage = new JsonObject(); clearNotice(); updatedAt = 0; }
     private void clearNotice() { notice = ""; noticeKind = "status"; noticeUntil = 0; popup = ""; popupKind = "status"; popupUntil = 0; }
     public void notice(String kind, String text) {
         noticeKind = kind; notice = text; noticeUntil = System.nanoTime() + 12_000_000_000L;

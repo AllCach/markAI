@@ -15,6 +15,7 @@ import dev.markai.core.*;
 import dev.markai.companion.CompanionRegistry;
 import dev.markai.companion.CompanionProgression;
 import dev.markai.journal.FieldJournal;
+import dev.markai.journal.FieldJournalPage;
 import dev.markai.journal.FieldJournalStore;
 import dev.markai.companion.CompanionStore;
 import dev.markai.companion.GroupChatState;
@@ -229,6 +230,11 @@ public final class MarkAIMod implements ModInitializer {
                 save();
                 CompanionNetwork.notice(player, "status", noteId.equals("0") ? "Заметка добавлена." : "Заметка удалена.");
                 CompanionNetwork.sendSnapshot(player);
+                CompanionNetwork.sendJournalPage(player);
+            }
+            public String journalPage(ServerPlayer player, String speciesId, int speciesOffset, int noteOffset, int biomeOffset) {
+                return CHAT_JSON.toJson(FieldJournalPage.snapshot(fieldJournals.get(player.getUUID()), speciesId,
+                    speciesOffset, noteOffset, biomeOffset));
             }
         });
         CompanionCombatRules.register((wolf, target) -> companions.values().stream().filter(c -> c.entity.equals(wolf.getUUID()))
@@ -1962,13 +1968,12 @@ public final class MarkAIMod implements ModInitializer {
         if (c == null) return CHAT_JSON.toJson(Map.of("name", "Марк", "activity", "NOT_CREATED",
             "ai_status", "Создайте компаньона", "messages", List.of(), "memories", List.of(),
             "companions", available, "group", groupSnapshot(owner), "group_messages", groupState(owner.getUUID()).messages(),
-            "common_settings", commonSettings(owner), "field_journal", fieldJournalSnapshot(owner.getUUID())));
+            "common_settings", commonSettings(owner)));
         c.memory.flushPending(); c.living.normalize();
         LivingEntity entity = CompanionSpecies.CHICKEN.id().equals(c.species) ? findChicken(c) : find(c);
         AISession session = aiSessions.get(c.id);
         var data = new LinkedHashMap<String, Object>();
         data.put("companions", available);
-        data.put("field_journal", fieldJournalSnapshot(owner.getUUID()));
         data.put("group", groupSnapshot(owner));
         data.put("common_settings", commonSettings(owner));
         var groupHistory = new ArrayList<>(groupState(owner.getUUID()).messages());
@@ -2412,34 +2417,6 @@ public final class MarkAIMod implements ModInitializer {
                 journal.observe(speciesId, mob.getUUID(), biomeId, level.getGameTime());
             }
         }
-    }
-
-    private List<Map<String, Object>> fieldJournalSnapshot(UUID ownerId) {
-        FieldJournal journal = fieldJournals.get(ownerId);
-        if (journal == null) return List.of();
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (FieldJournal.Entry entry : journal.entries()) {
-            if (result.size() >= 16) break; // Keep the complete UI snapshot under the packet size limit.
-            var item = new LinkedHashMap<String, Object>();
-            item.put("species_id", entry.speciesId);
-            item.put("observations", entry.observationCount);
-            item.put("stage", entry.stage().name());
-            item.put("first_observed_at", entry.firstObservedAt);
-            item.put("last_observed_at", entry.lastObservedAt);
-            item.put("biomes", entry.biomes.stream().limit(4).toList());
-            item.put("total_notes", entry.notes.size());
-            item.put("notes", entry.notes.stream().limit(4).map(note -> Map.of(
-                "id", note.id(), "text", note.text().length() <= 96 ? note.text() : note.text().substring(0, 96),
-                "created_at", note.createdAt())).toList());
-            var knowledge = new LinkedHashMap<String, String>();
-            for (FieldJournal.Topic topic : FieldJournal.Topic.values()) {
-                FieldJournal.Knowledge unlocked = journal.knowledge(entry.speciesId, topic);
-                if (unlocked != null) knowledge.put(topic.name().toLowerCase(Locale.ROOT), unlocked.translationKey());
-            }
-            item.put("knowledge", knowledge);
-            result.add(item);
-        }
-        return result;
     }
 
     private void save() {

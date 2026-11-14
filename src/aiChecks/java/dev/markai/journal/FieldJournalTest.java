@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 /** Deterministic checks for bounded research progression and player notes. */
@@ -16,6 +17,7 @@ public final class FieldJournalTest {
         duplicateEntitiesCannotFarmResearch();
         notesAreBoundedAndEditable();
         snapshotsCannotMutateJournal();
+        pagedSnapshotExposesAllStoredData();
         inputAndStorageLimitsAreEnforced();
         persistenceRoundTripAndValidation();
         System.out.println("FieldJournalTest: " + checks + " checks passed");
@@ -79,6 +81,35 @@ public final class FieldJournalTest {
         check(journal.entry("minecraft:zombie").observationCount == 1, "Entry accessor returns a defensive copy");
         check(journal.entry("minecraft:zombie").biomes.size() == 1, "Biome list cannot be mutated through a snapshot");
         check(journal.entries().size() == 1, "Entries snapshot contains discovered species");
+    }
+
+    private static void pagedSnapshotExposesAllStoredData() {
+        FieldJournal journal = new FieldJournal();
+        for (int i = 0; i < 20; i++)
+            journal.observe("markai:species_" + i, UUID.randomUUID(), "minecraft:plains", i);
+        String species = "markai:species_19";
+        UUID observed = UUID.randomUUID();
+        for (int i = 0; i < 9; i++)
+            journal.observe(species, observed, "markai:biome_" + i, i + 20);
+        String fullNote = "long field note ".repeat(30).strip();
+        for (int i = 0; i < 7; i++)
+            check(journal.addNote(species, i == 6 ? fullNote : "note " + i, 40 + i),
+                "All test notes fit within storage limits");
+
+        Map<String, Object> first = FieldJournalPage.snapshot(journal, "", 0, 0, 0);
+        Map<String, Object> last = FieldJournalPage.snapshot(journal, species, 18, 6, 8);
+        check(((List<?>) first.get("species")).size() == FieldJournalPage.SPECIES_PAGE_SIZE,
+            "First page is bounded independently of total journal size");
+        check(((List<?>) last.get("species")).size() == 2 && (int) last.get("species_total") == 20,
+            "Species after the former sixteen-entry cutoff are reachable");
+        Map<?, ?> entry = (Map<?, ?>) last.get("entry");
+        List<?> notes = (List<?>) entry.get("notes");
+        check(notes.size() == 1 && fullNote.equals(((Map<?, ?>) notes.get(0)).get("text")),
+            "The last note retains its full text beyond the former four-note cutoff");
+        check(((List<?>) entry.get("biomes")).size() == 2,
+            "Biomes beyond the former four-biome cutoff are reachable");
+        check((int) last.get("notes_offset") == 6 && (int) last.get("biomes_offset") == 8,
+            "Page offsets identify the requested final data");
     }
 
     private static void inputAndStorageLimitsAreEnforced() {

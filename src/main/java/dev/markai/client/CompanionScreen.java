@@ -3,6 +3,7 @@ package dev.markai.client;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.markai.journal.FieldJournalPage;
 import dev.markai.network.NetworkRules;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -29,13 +30,14 @@ public final class CompanionScreen extends Screen {
     private final boolean quick;
     private Tab tab;
     private int left, top, panelWidth, panelHeight, contentTop, contentBottom;
-    private int conversationScroll, memoryOffset, detailScroll, profileScroll, journalOffset, journalNoteOffset;
+    private int conversationScroll, memoryOffset, detailScroll, profileScroll, journalOffset, journalNoteOffset, journalBiomeOffset;
     private String selectedMemory = "", draft = "", renameDraft;
     private String companionId = MarkAIClient.STATE.companionId(), requestedCompanion = "";
     private long selectionRequestedAt;
     private boolean traitPage;
     private EditBox input, rename;
     private Button sendButton, deleteButton, renameButton, journalAddButton, journalDeleteButton;
+    private Button journalSpeciesPrev, journalSpeciesNext, journalNotePrev, journalNoteNext, journalBiomePrev, journalBiomeNext;
     private EditBox journalInput;
     private String selectedSpeciesId = "", selectedJournalNoteId = "";
     private String journalDraft = "";
@@ -69,6 +71,8 @@ public final class CompanionScreen extends Screen {
         contentTop = top + (quick ? 42 : panelWidth < 440 ? 82 : 66); contentBottom = top + panelHeight - 34;
         input = null; rename = null; sendButton = null; deleteButton = null; renameButton = null;
         journalInput = null; journalAddButton = null; journalDeleteButton = null;
+        journalSpeciesPrev = null; journalSpeciesNext = null; journalNotePrev = null; journalNoteNext = null;
+        journalBiomePrev = null; journalBiomeNext = null;
         previousCard = null; nextCard = null;
         memoryButtons.clear(); settingButtons.clear(); traitButtons.clear(); journalSpeciesButtons.clear(); journalNoteButtons.clear();
         addButton("×", left + panelWidth - 29, top + 8, 20, () -> minecraft.gui.setScreen(null));
@@ -105,6 +109,7 @@ public final class CompanionScreen extends Screen {
 
     private void changeTab(Tab destination) {
         rememberDraft(); tab = destination; clearWidgets(); init(); MarkAIClient.request();
+        if (destination == Tab.JOURNAL) requestJournalPage();
     }
     private void rememberDraft() {
         if (input != null) draft = input.getValue();
@@ -115,6 +120,25 @@ public final class CompanionScreen extends Screen {
     public void selectionUpdated() {
         if (companionId.equals(state().companionId())) return;
         resetCompanionDrafts();
+        clearWidgets(); init();
+    }
+    public void requestJournalPage() {
+        MarkAIClient.journalPage(selectedSpeciesId, journalOffset, journalNoteOffset, journalBiomeOffset);
+    }
+    public void journalPageUpdated() {
+        if (tab != Tab.JOURNAL) return;
+        JsonObject page = state().journalPage();
+        if (!selectedSpeciesId.equals(ClientCompanionState.string(page, "requested_species_id", ""))
+                || journalOffset != (int) ClientCompanionState.number(page, "requested_species_offset", -1)
+                || journalNoteOffset != (int) ClientCompanionState.number(page, "requested_note_offset", -1)
+                || journalBiomeOffset != (int) ClientCompanionState.number(page, "requested_biome_offset", -1)) return;
+        journalOffset = (int) ClientCompanionState.number(page, "species_offset", 0);
+        journalNoteOffset = (int) ClientCompanionState.number(page, "notes_offset", 0);
+        journalBiomeOffset = (int) ClientCompanionState.number(page, "biomes_offset", 0);
+        selectedSpeciesId = ClientCompanionState.string(page, "selected_species_id", "");
+        if (selectedJournalNotes().stream().noneMatch(note ->
+                selectedJournalNoteId.equals(ClientCompanionState.string(note, "id", ""))))
+            selectedJournalNoteId = "";
         clearWidgets(); init();
     }
     private void resetCompanionDrafts() {
@@ -264,15 +288,14 @@ public final class CompanionScreen extends Screen {
     }
     private List<JsonObject> journalEntries() {
         List<JsonObject> result = new ArrayList<>();
-        for (var value : ClientCompanionState.array(state().data(), "field_journal")) {
+        for (var value : ClientCompanionState.array(state().journalPage(), "species")) {
             if (value != null && value.isJsonObject()) result.add(value.getAsJsonObject());
         }
         return result;
     }
     private JsonObject selectedJournalEntry() {
-        for (JsonObject entry : journalEntries())
-            if (ClientCompanionState.string(entry, "species_id", "").equals(selectedSpeciesId)) return entry;
-        return null;
+        JsonObject entry = ClientCompanionState.object(state().journalPage(), "entry");
+        return selectedSpeciesId.equals(ClientCompanionState.string(entry, "species_id", "")) ? entry : null;
     }
     private List<JsonObject> selectedJournalNotes() {
         JsonObject entry = selectedJournalEntry();
@@ -287,33 +310,54 @@ public final class CompanionScreen extends Screen {
         int listWidth = Math.max(82, Math.min(150, (panelWidth - 30) / 3));
         int visible = Math.max(1, Math.min(6, (contentBottom - contentTop - 6) / 23));
         List<JsonObject> entries = journalEntries();
-        journalOffset = Math.max(0, Math.min(journalOffset, Math.max(0, entries.size() - visible)));
-        if (selectedSpeciesId.isBlank() && !entries.isEmpty())
-            selectedSpeciesId = ClientCompanionState.string(entries.get(0), "species_id", "");
-        if (!selectedSpeciesId.isBlank() && selectedJournalEntry() == null) selectedSpeciesId = "";
-        for (int i = 0; i < Math.min(visible, entries.size() - journalOffset); i++) {
-            JsonObject entry = entries.get(journalOffset + i);
+        visible = Math.min(visible, Math.max(0, (contentBottom - contentTop - 22) / 23));
+        for (int i = 0; i < Math.min(visible, entries.size()); i++) {
+            JsonObject entry = entries.get(i);
             String speciesId = ClientCompanionState.string(entry, "species_id", "");
             Button button = addButton("", left + 10, contentTop + i * 23, listWidth, () -> {
-                selectedSpeciesId = speciesId; selectedJournalNoteId = ""; detailScroll = 0; journalNoteOffset = 0; journalDraft = "";
-                clearWidgets(); init();
+                selectedSpeciesId = speciesId; selectedJournalNoteId = ""; detailScroll = 0;
+                journalNoteOffset = 0; journalBiomeOffset = 0; journalDraft = "";
+                requestJournalPage();
             });
             journalSpeciesButtons.add(button);
         }
+        journalSpeciesPrev = addButton("‹", left + 10, contentBottom - 20, 20, () -> {
+            journalOffset -= FieldJournalPage.SPECIES_PAGE_SIZE; requestJournalPage();
+        });
+        journalSpeciesNext = addButton("›", left + 32, contentBottom - 20, 20, () -> {
+            journalOffset += FieldJournalPage.SPECIES_PAGE_SIZE; requestJournalPage();
+        });
+        journalBiomePrev = addButton("‹", left + 54, contentBottom - 20, 20, () -> {
+            journalBiomeOffset -= FieldJournalPage.BIOME_PAGE_SIZE; requestJournalPage();
+        });
+        journalBiomeNext = addButton("›", left + 76, contentBottom - 20, 20, () -> {
+            journalBiomeOffset += FieldJournalPage.BIOME_PAGE_SIZE; requestJournalPage();
+        });
+        journalSpeciesPrev.setTooltip(Tooltip.create(tr("markai.journal.previous_species_page")));
+        journalSpeciesNext.setTooltip(Tooltip.create(tr("markai.journal.next_species_page")));
+        journalBiomePrev.setTooltip(Tooltip.create(tr("markai.journal.previous_biome_page")));
+        journalBiomeNext.setTooltip(Tooltip.create(tr("markai.journal.next_biome_page")));
         JsonObject selected = selectedJournalEntry();
         List<JsonObject> notes = selectedJournalNotes();
         int noteX = left + listWidth + 18;
         int noteWidth = Math.max(70, left + panelWidth - 12 - noteX);
-        int noteVisible = Math.max(1, Math.min(4, (contentBottom - contentTop - 92) / 22));
-        journalNoteOffset = Math.max(0, Math.min(journalNoteOffset, Math.max(0, notes.size() - noteVisible)));
-        for (int i = 0; i < Math.min(noteVisible, notes.size() - journalNoteOffset); i++) {
-            JsonObject note = notes.get(journalNoteOffset + i);
+        int noteVisible = Math.max(1, Math.min(FieldJournalPage.NOTE_PAGE_SIZE, (contentBottom - contentTop - 100) / 22));
+        for (int i = 0; i < Math.min(noteVisible, notes.size()); i++) {
+            JsonObject note = notes.get(i);
             String noteId = ClientCompanionState.string(note, "id", "");
-            Button button = addButton("", noteX, contentTop + 92 + i * 22, noteWidth, () -> {
-                selectedJournalNoteId = noteId; updateLabels();
+            Button button = addButton("", noteX, contentTop + 78 + i * 22, noteWidth, () -> {
+                selectedJournalNoteId = noteId; detailScroll = 0; updateLabels();
             });
             journalNoteButtons.add(button);
         }
+        journalNotePrev = addButton("‹", noteX, contentBottom - 20, 20, () -> {
+            journalNoteOffset -= FieldJournalPage.NOTE_PAGE_SIZE; selectedJournalNoteId = ""; requestJournalPage();
+        });
+        journalNoteNext = addButton("›", noteX + 22, contentBottom - 20, 20, () -> {
+            journalNoteOffset += FieldJournalPage.NOTE_PAGE_SIZE; selectedJournalNoteId = ""; requestJournalPage();
+        });
+        journalNotePrev.setTooltip(Tooltip.create(tr("markai.journal.previous_note_page")));
+        journalNoteNext.setTooltip(Tooltip.create(tr("markai.journal.next_note_page")));
         int inputY = top + panelHeight - 58;
         journalInput = addRenderableWidget(new EditBox(font, left + 10, inputY, panelWidth - 148, 20, tr("markai.journal.note_hint")));
         journalInput.setMaxLength(FieldJournalLimit.NOTE_LENGTH);
@@ -390,7 +434,7 @@ public final class CompanionScreen extends Screen {
         List<JsonObject> journal = journalEntries();
         for (int i = 0; i < journalSpeciesButtons.size(); i++) {
             Button button = journalSpeciesButtons.get(i);
-            int index = journalOffset + i;
+            int index = i;
             if (index >= journal.size()) { button.active = false; button.setMessage(Component.literal("—")); continue; }
             JsonObject entry = journal.get(index);
             String id = ClientCompanionState.string(entry, "species_id", "");
@@ -403,7 +447,7 @@ public final class CompanionScreen extends Screen {
         List<JsonObject> notes = selectedJournalNotes();
         for (int i = 0; i < journalNoteButtons.size(); i++) {
             Button button = journalNoteButtons.get(i);
-            int index = journalNoteOffset + i;
+            int index = i;
             if (index >= notes.size()) { button.active = false; button.setMessage(Component.literal("—")); continue; }
             JsonObject note = notes.get(index);
             String id = ClientCompanionState.string(note, "id", "");
@@ -411,6 +455,16 @@ public final class CompanionScreen extends Screen {
             if (id.equals(selectedJournalNoteId)) text = "› " + text;
             button.setMessage(Component.literal(font.plainSubstrByWidth(text, button.getWidth() - 8)));
         }
+        JsonObject page = state().journalPage();
+        int speciesTotal = (int) ClientCompanionState.number(page, "species_total", 0);
+        int notesTotal = (int) ClientCompanionState.number(page, "notes_total", 0);
+        int biomesTotal = (int) ClientCompanionState.number(page, "biomes_total", 0);
+        if (journalSpeciesPrev != null) journalSpeciesPrev.active = journalOffset > 0;
+        if (journalSpeciesNext != null) journalSpeciesNext.active = journalOffset + FieldJournalPage.SPECIES_PAGE_SIZE < speciesTotal;
+        if (journalNotePrev != null) journalNotePrev.active = journalNoteOffset > 0;
+        if (journalNoteNext != null) journalNoteNext.active = journalNoteOffset + FieldJournalPage.NOTE_PAGE_SIZE < notesTotal;
+        if (journalBiomePrev != null) journalBiomePrev.active = journalBiomeOffset > 0;
+        if (journalBiomeNext != null) journalBiomeNext.active = journalBiomeOffset + FieldJournalPage.BIOME_PAGE_SIZE < biomesTotal;
         for (int i = 0; i < settingButtons.size(); i++) {
             String key = List.of("hud", "defense", "autochat", "follow_distance").get(i);
             String value = key.equals("follow_distance") ? String.format(Locale.ROOT, "%.0f", ClientCompanionState.number(state().settings(), key, 4))
@@ -455,11 +509,18 @@ public final class CompanionScreen extends Screen {
                 case DIALOGUE -> conversationScroll = Math.max(0, conversationScroll + delta);
                 case JOURNAL -> {
                     int listWidth = Math.max(82, Math.min(150, (panelWidth - 30) / 3));
-                    if (x < left + 10 + listWidth + 5) journalOffset = Math.max(0,
-                        Math.min(Math.max(0, journalEntries().size() - journalSpeciesButtons.size()), journalOffset - delta));
-                    else if (y >= contentTop + 80) journalNoteOffset = Math.max(0,
-                        Math.min(Math.max(0, selectedJournalNotes().size() - journalNoteButtons.size()), journalNoteOffset - delta));
-                    else detailScroll = Math.max(0, detailScroll - delta);
+                    if (x < left + 10 + listWidth + 5) {
+                        int total = (int) ClientCompanionState.number(state().journalPage(), "species_total", 0);
+                        journalOffset = Math.max(0, Math.min(Math.max(0, ((total - 1) / FieldJournalPage.SPECIES_PAGE_SIZE) * FieldJournalPage.SPECIES_PAGE_SIZE),
+                            journalOffset - (int) Math.signum(vertical) * FieldJournalPage.SPECIES_PAGE_SIZE));
+                        requestJournalPage();
+                    } else if (y >= contentTop + 78) {
+                        int total = (int) ClientCompanionState.number(state().journalPage(), "notes_total", 0);
+                        journalNoteOffset = Math.max(0, Math.min(Math.max(0, ((total - 1) / FieldJournalPage.NOTE_PAGE_SIZE) * FieldJournalPage.NOTE_PAGE_SIZE),
+                            journalNoteOffset - (int) Math.signum(vertical) * FieldJournalPage.NOTE_PAGE_SIZE));
+                        selectedJournalNoteId = "";
+                        requestJournalPage();
+                    } else detailScroll = Math.max(0, detailScroll - delta);
                 }
                 case MEMORIES -> {
                     if (x > left + (panelWidth - 28) * 2 / 5 + 20) detailScroll = Math.max(0, detailScroll - delta);
@@ -671,8 +732,11 @@ public final class CompanionScreen extends Screen {
             }
             details.add(label("markai.journal.personal_notes") + ":");
             if (selectedJournalNotes().isEmpty()) details.add(label("markai.journal.no_notes"));
+            for (JsonObject note : selectedJournalNotes())
+                if (ClientCompanionState.string(note, "id", "").equals(selectedJournalNoteId))
+                    details.add(ClientCompanionState.string(note, "text", ""));
         }
-        drawWrapped(graphics, details, x, contentTop + 2, w, Math.max(60, contentBottom - contentTop - 8), detailScroll, WHITE);
+        drawWrapped(graphics, details, x, contentTop + 2, w, Math.min(74, contentBottom - contentTop - 24), detailScroll, WHITE);
     }
 
     private static final class FieldJournalLimit { static final int NOTE_LENGTH = 512; }

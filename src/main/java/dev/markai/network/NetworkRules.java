@@ -39,6 +39,12 @@ public final class NetworkRules {
         return id != null && id.length() <= 128
             && id.matches("[a-z0-9_.-]+:[a-z0-9_./-]+");
     }
+    public static boolean journalPage(String speciesId, int speciesOffset, int noteOffset, int biomeOffset) {
+        return (speciesId != null && (speciesId.isEmpty() || journalSpeciesId(speciesId)))
+            && speciesOffset >= 0 && speciesOffset < 256
+            && noteOffset >= 0 && noteOffset < 32
+            && biomeOffset >= 0 && biomeOffset < 16;
+    }
     /** noteId "0" means add; a positive decimal ID means delete. */
     public static boolean journalNote(String speciesId, String text, String noteId) {
         if (!journalSpeciesId(speciesId) || text == null || noteId == null || noteId.length() > 19) return false;

@@ -107,6 +107,8 @@ public final class FieldJournal {
         return entries.values().stream().map(FieldJournal::copy).toList();
     }
 
+    public List<String> speciesIds() { return List.copyOf(entries.keySet()); }
+
     public int speciesCount() { return entries.size(); }
 
     /** Repairs untrusted deserialized state before it is used by gameplay. */

@@ -51,6 +51,10 @@ public final class MarkAIClient implements ClientModInitializer {
             refreshPreview(Minecraft.getInstance());
             if (Minecraft.getInstance().gui.screen() instanceof CompanionScreen screen) screen.selectionUpdated();
         });
+        ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.JournalPage.TYPE, (payload, context) -> {
+            STATE.updateJournalPage(payload.json());
+            if (Minecraft.getInstance().gui.screen() instanceof CompanionScreen screen) screen.journalPageUpdated();
+        });
         ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.Notice.TYPE, (payload, context) -> STATE.notice(payload.kind(), payload.text()));
         ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.Popup.TYPE, (payload, context) -> STATE.popupNotice(payload.kind(), payload.text()));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -147,8 +151,10 @@ public final class MarkAIClient implements ClientModInitializer {
 
     public static boolean available() { return Minecraft.getInstance().getConnection() != null && ClientPlayNetworking.canSend(CompanionNetwork.Request.TYPE); }
     public static void show(CompanionScreen.Tab tab, boolean quickMenu) {
-        Minecraft.getInstance().gui.setScreen(new CompanionScreen(tab, quickMenu));
+        CompanionScreen screen = new CompanionScreen(tab, quickMenu);
+        Minecraft.getInstance().gui.setScreen(screen);
         request();
+        if (tab == CompanionScreen.Tab.JOURNAL) screen.requestJournalPage();
     }
     public static void request() {
         if (available()) ClientPlayNetworking.send(new CompanionNetwork.Request());
@@ -212,6 +218,10 @@ public final class MarkAIClient implements ClientModInitializer {
     public static void deleteMemory(String id) { if (NetworkRules.memoryId(id)) send(new CompanionNetwork.MemoryDelete(id)); }
     public static void journalNote(String speciesId, String text, String noteId) {
         if (NetworkRules.journalNote(speciesId, text, noteId)) send(new CompanionNetwork.JournalNote(speciesId, text, noteId));
+    }
+    public static void journalPage(String speciesId, int speciesOffset, int noteOffset, int biomeOffset) {
+        if (NetworkRules.journalPage(speciesId, speciesOffset, noteOffset, biomeOffset))
+            send(new CompanionNetwork.JournalPageRequest(speciesOffset, speciesId, noteOffset, biomeOffset));
     }
     public static void setting(String key, String value) { if (NetworkRules.setting(key, value)) send(new CompanionNetwork.Setting(key, value)); }
     private static boolean send(CustomPacketPayload payload) {
