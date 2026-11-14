@@ -27,7 +27,8 @@ public final class FieldJournalPage {
 
         String selectedId = requestedSpeciesId == null ? "" : requestedSpeciesId;
         FieldJournal.Entry selected = journal == null ? null : journal.entry(selectedId);
-        if (selected == null && !species.isEmpty()) {
+        if ((selected == null || !ids.subList(speciesOffset,
+                Math.min(ids.size(), speciesOffset + SPECIES_PAGE_SIZE)).contains(selectedId)) && !species.isEmpty()) {
             selectedId = ids.get(speciesOffset);
             selected = journal.entry(selectedId);
         }
