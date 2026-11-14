@@ -110,6 +110,8 @@ public final class MarkAIMod implements ModInitializer {
     private final WolfWorkRuntime wolfWork = new WolfWorkRuntime(this::onWorkCompleted);
     private final ChickenCompanionRuntime chickenRuntime = new ChickenCompanionRuntime();
     private final TerritoryRuntime territoryRuntime = new TerritoryRuntime();
+    private final BalancedMobAI balancedMobAI = new BalancedMobAI(() -> aiConfig,
+        id -> companions.byEntity(id) != null);
     private final Map<UUID, Integer> memoryPages = new HashMap<>();
     private final Map<UUID, Long> ownerAutomaticAt = new HashMap<>();
     private final Map<UUID, Long> attackMissNoticeAt = new HashMap<>();
@@ -182,6 +184,7 @@ public final class MarkAIMod implements ModInitializer {
     }
 
     @Override public void onInitialize() {
+        ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> balancedMobAI.install(entity));
         CompanionTamingInteractions.register(new CompanionTamingInteractions.Registrar() {
             @Override public void registerWolf(ServerPlayer owner, Wolf wolf) { adoptWolf(owner, wolf); }
             @Override public CompanionTamingInteractions.RegistrationResult registerChicken(ServerPlayer owner, Chicken chicken) {
@@ -334,7 +337,7 @@ public final class MarkAIMod implements ModInitializer {
             CompanionMemory.shutdownWorkers();
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
-            companions.clear(); fieldJournals.clear(); configured.clear(); livingRuntime.clear(); wolfWork.clear(); memoryPages.clear(); ownerAutomaticAt.clear(); server = null;
+            companions.clear(); fieldJournals.clear(); configured.clear(); livingRuntime.clear(); wolfWork.clear(); balancedMobAI.clear(); memoryPages.clear(); ownerAutomaticAt.clear(); server = null;
         });
         ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
             invalidateOwnerSessions(entity.getUUID());
@@ -373,6 +376,7 @@ public final class MarkAIMod implements ModInitializer {
         });
         ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, baseDamage, damage, blocked) -> {
             if (blocked || damage <= 0) return;
+            balancedMobAI.onDamage(entity, source.getEntity());
             for (Companion c : companions.values()) {
                 Wolf witness = find(c);
                 if (witness != null) livingRuntime.damage(c, witness, entity, source.getEntity(), damage);

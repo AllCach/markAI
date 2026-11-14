@@ -35,6 +35,12 @@ public final class AIConfig {
     public double followDistance = 4.0;
     /** Maximum distance, in blocks, at which a companion may acquire a combat target. */
     public int combatRadius = 32;
+    /** Server-side vanilla mob reactions; no model requests or companion memory access. */
+    public boolean balancedMobAI = true;
+    public boolean balancedChickens = true;
+    public boolean balancedSheep = true;
+    public boolean balancedWildWolves = true;
+    public int balancedMobRadius = 8;
     public boolean defensiveBehavior = true;
     public boolean debugMode = false;
     public boolean voiceEnabled = false;
@@ -81,7 +87,8 @@ public final class AIConfig {
                 || maxDialogueLength < 32 || maxDialogueLength > 240
                 || automaticConversationSeconds < 0 || automaticConversationSeconds > 3600
                 || !Double.isFinite(followDistance) || followDistance < 2 || followDistance > 16
-                || combatRadius < 8 || combatRadius > 64)
+                || combatRadius < 8 || combatRadius > 64
+                || balancedMobRadius < 4 || balancedMobRadius > 16)
             throw new IllegalArgumentException("Invalid MarkAI configuration limits");
         if (authentication == null || !(authentication.equals("none") || authentication.equals("bearer")))
             throw new IllegalArgumentException("Authentication must be none or bearer");
