@@ -145,6 +145,12 @@ public final class CompanionRegistryTest {
             check(stripped.living.has("personality") && stripped.training.equals(walk.training)
                 && stripped.id.equals(walk.id) && stripped.entity.equals(walk.entity), "Disabled persistence retains identity, traits and training");
             check(walk.memory != null && walk.living.has("events"), "Saving without memory does not erase the live companion state");
+            Path mixedMemory = dir.resolve("mixed-memory.json");
+            store.write(mixedMemory, List.of(walk, mark), Map.of(owner, walk.id), Map.of(), saved -> saved.id.equals(walk.id));
+            var mixed = store.read(mixedMemory).companions();
+            check(mixed.get(0).memory.equals(walk.memory) && mixed.get(0).living.has("events")
+                && mixed.get(1).memory == null && !mixed.get(1).living.has("events"),
+                "Personal memory preference keeps one companion's history and omits the other's");
             var loaded = registry();
             for (Saved saved : current.companions()) loaded.add(saved);
             loaded.restoreSelections(current.selected());

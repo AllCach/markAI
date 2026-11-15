@@ -32,6 +32,9 @@ public final class NetworkRulesTest {
         check(NetworkRules.companionId("f5095bb5-b54c-4c67-bc62-ab7222f5b33a"), "Canonical companion UUID");
         check(NetworkRules.setting("memory_persistence", "false") && NetworkRules.setting("memory_persistence", "true")
             && !NetworkRules.setting("memory_persistence", "maybe"), "Memory persistence accepts only booleans");
+        check(NetworkRules.setting("save_memory", "false") && NetworkRules.setting("save_memory", "true")
+            && !NetworkRules.setting("save_memory", "maybe") && !NetworkRules.setting("all:save_memory", "false"),
+            "Personal memory setting is boolean and cannot be applied to every companion at once");
         check(!NetworkRules.companionId(null), "Null companion UUID");
         check(NetworkRules.journalSpeciesId("minecraft:wolf"), "Valid journal species ID");
         check(!NetworkRules.journalSpeciesId("../markai.json") && !NetworkRules.journalSpeciesId("WOLF"),

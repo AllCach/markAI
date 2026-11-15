@@ -429,9 +429,11 @@ public final class AIGameTest {
 
     private static int askAutomatic(MarkAIMod mod, ServerPlayer owner) {
         try {
-            var method = MarkAIMod.class.getDeclaredMethod("ask", ServerPlayer.class, String.class, boolean.class);
+            var method = MarkAIMod.class.getDeclaredMethod("ask", ServerPlayer.class, MarkAIMod.Companion.class,
+                String.class, boolean.class, boolean.class);
             method.setAccessible(true);
-            return (int) method.invoke(mod, owner, "Поделись коротким впечатлением о том, что видишь сейчас.", true);
+            return (int) method.invoke(mod, owner, currentCompanion(mod, owner.getUUID()),
+                "Поделись коротким впечатлением о том, что видишь сейчас.", true, false);
         } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
     }
 

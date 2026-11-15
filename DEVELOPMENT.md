@@ -1,6 +1,6 @@
 # Разработка MarkAI
 
-Текущая ветка интеграции — `dev-beta`, версия исходников `0.11.2-beta.1`. Java 25, Minecraft 26.3, Fabric Loader 0.19.5, Fabric API 0.163.0+26.3, Loom 1.18.4 и Gradle Wrapper 9.7.1 указаны в файлах сборки. Используются официальные имена Minecraft.
+Текущая ветка интеграции — `dev-beta`, версия исходников `0.11.3-beta.1`. Java 25, Minecraft 26.3, Fabric Loader 0.19.5, Fabric API 0.163.0+26.3, Loom 1.18.4 и Gradle Wrapper 9.7.1 указаны в файлах сборки. Используются официальные имена Minecraft.
 
 ## Сборка
 

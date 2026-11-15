@@ -15,7 +15,7 @@ import net.minecraft.world.phys.EntityHitResult;
 
 /** Species-aware, owner-validated companion enrollment through in-world interactions. */
 public final class CompanionTamingInteractions {
-    public enum RegistrationResult { ADOPTED, ALREADY_REGISTERED, REJECTED }
+    public enum RegistrationResult { ADOPTED, PENDING, ALREADY_REGISTERED, REJECTED }
 
     public interface Registrar {
         void registerWolf(ServerPlayer owner, Wolf wolf);
@@ -66,6 +66,7 @@ public final class CompanionTamingInteractions {
             level.broadcastEntityEvent(chicken, (byte) 7);
             return InteractionResult.CONSUME;
         }
-        return result == RegistrationResult.ALREADY_REGISTERED ? InteractionResult.CONSUME : InteractionResult.FAIL;
+        return result == RegistrationResult.PENDING || result == RegistrationResult.ALREADY_REGISTERED
+            ? InteractionResult.CONSUME : InteractionResult.FAIL;
     }
 }

@@ -116,6 +116,41 @@ public final class WalkOrdersGameTest {
     }
 
     @GameTest(structure = "markai-test:arena", maxTicks = 100)
+    public void fullChickenRosterSpendsSeedOnlyAfterProfileIsBound(GameTestHelper helper) throws Exception {
+        setup(helper); ServerPlayer owner = owner(helper);
+        var registry = TestCompanions.registry(mod());
+        MarkAIMod.Companion previous = null;
+        for (int i = 0; i < 8; i++) {
+            MarkAIMod.Companion profile = new MarkAIMod.Companion();
+            profile.id = UUID.randomUUID(); profile.owner = owner.getUUID(); profile.entity = UUID.randomUUID();
+            profile.dimension = "minecraft:overworld"; profile.species = "minecraft:chicken"; profile.dead = true;
+            registry.add(profile);
+            if (previous == null) previous = profile;
+        }
+        Chicken chicken = helper.spawn(EntityTypes.CHICKEN, new BlockPos(7, 2, 7));
+        owner.getAbilities().instabuild = false;
+        owner.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.WHEAT_SEEDS, 4));
+        owner.setShiftKeyDown(true);
+        var offered = UseEntityCallback.EVENT.invoker().interact(owner, owner.level(), InteractionHand.MAIN_HAND,
+            chicken, new EntityHitResult(chicken));
+        helper.assertTrue(offered == net.minecraft.world.InteractionResult.CONSUME
+                && owner.getMainHandItem().getCount() == 4 && registry.byEntity(chicken.getUUID()) == null,
+            "Opening a full-roster profile choice must not consume seeds or register the chicken");
+
+        @SuppressWarnings("unchecked") Map<UUID, ?> pending = (Map<UUID, ?>) field(MarkAIMod.class, "pendingAdoptions").get(mod());
+        Object offer = pending.get(owner.getUUID());
+        helper.assertTrue(offer != null, "The owner has a pending chicken profile choice");
+        UUID offerId = (UUID) field(offer.getClass(), "offerId").get(offer);
+        var choose = MarkAIMod.class.getDeclaredMethod("chooseAdoptionProfile", ServerPlayer.class, String.class, String.class);
+        choose.setAccessible(true);
+        choose.invoke(mod(), owner, offerId.toString(), previous.id.toString());
+        helper.assertTrue(registry.byEntity(chicken.getUUID()) == previous && !previous.dead
+                && registry.owned(owner.getUUID()).size() == 8 && owner.getMainHandItem().getCount() == 3,
+            "Binding the dead chicken profile preserves the roster and spends exactly one seed");
+        helper.succeed();
+    }
+
+    @GameTest(structure = "markai-test:arena", maxTicks = 100)
     public void explicitAdoptionRequiresTheLookedAtWolfsActualOwner(GameTestHelper helper) throws Exception {
         setup(helper); ServerPlayer owner = owner(helper), stranger = owner(helper);
         Vec3 strangerPos = helper.absoluteVec(new Vec3(20.5, 2, 20.5)); stranger.setPos(strangerPos.x, strangerPos.y, strangerPos.z);

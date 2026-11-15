@@ -92,6 +92,8 @@
   "markai.setting.hud": "Панель HUD",
   "markai.setting.defense": "Защита",
   "markai.setting.autochat": "Сам говорит",
+  "markai.setting.save_memory": "Сохранять память этого питомца",
+  "markai.setting.save_memory_hint": "Действует при включённом общем сохранении памяти. Если выключить, история этого питомца не записывается в мир.",
   "markai.setting.follow_distance": "Расстояние",
   "markai.trait.loyalty": "Верность",
   "markai.trait.curiosity": "Любопытство",

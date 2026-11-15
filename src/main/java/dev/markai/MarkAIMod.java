@@ -152,6 +152,7 @@ public final class MarkAIMod implements ModInitializer {
         String dimension;
         int chunkX, chunkZ;
         boolean dead;
+        boolean saveMemory = true;
         boolean following = true;
         boolean dismissed;
         LivingState living = new LivingState();
@@ -743,7 +744,7 @@ public final class MarkAIMod implements ModInitializer {
                 return CompanionTamingInteractions.RegistrationResult.REJECTED;
             }
             offerAdoption(owner, chicken, null, CompanionSpecies.CHICKEN.id());
-            return CompanionTamingInteractions.RegistrationResult.ADOPTED;
+            return CompanionTamingInteractions.RegistrationResult.PENDING;
         }
         Companion companion = new Companion();
         companion.owner = owner.getUUID();
@@ -836,6 +837,15 @@ public final class MarkAIMod implements ModInitializer {
             CompanionNetwork.notice(owner, "error", "Приручённый питомец уже недоступен.");
             return;
         }
+        boolean pendingChicken = offer.newId == null && living instanceof Chicken;
+        if (pendingChicken && owner.distanceToSqr(living) > 64) {
+            CompanionNetwork.notice(owner, "error", "Подойди к курице ближе чем на 8 блоков и попробуй ещё раз.");
+            return;
+        }
+        if (pendingChicken && !owner.getMainHandItem().is(ItemTags.CHICKEN_FOOD) && !owner.getAbilities().instabuild) {
+            CompanionNetwork.notice(owner, "error", "Для привязки профиля держи семена в основной руке.");
+            return;
+        }
         if (fresh != null) {
             AISession session = aiSessions.remove(fresh.id);
             if (session != null) invalidate(session);
@@ -873,6 +883,10 @@ public final class MarkAIMod implements ModInitializer {
         else if (living instanceof Chicken chicken) {
             chickenRuntime.configure(chicken, previous.living.name);
             chickenRuntime.follow(chicken, owner);
+        }
+        if (pendingChicken) {
+            if (!owner.getAbilities().instabuild) owner.getMainHandItem().shrink(1);
+            living.level().broadcastEntityEvent(living, (byte) 7);
         }
         save();
         CompanionNetwork.notice(owner, "status", "Профиль «" + previous.living.name + "» привязан к новому питомцу.");
@@ -1962,6 +1976,7 @@ public final class MarkAIMod implements ModInitializer {
             case "name" -> c.living.name = value.strip();
             case "hud" -> settings.hud = Boolean.parseBoolean(value);
             case "defense" -> settings.defense = Boolean.parseBoolean(value);
+            case "save_memory" -> c.saveMemory = Boolean.parseBoolean(value);
             case "autochat" -> {
                 settings.autochat = Boolean.parseBoolean(value);
                 AISession session = aiSessions.get(c.id);
@@ -2251,7 +2266,9 @@ public final class MarkAIMod implements ModInitializer {
             && (session == null || session.pendingAutomatic || session.pending == null && System.currentTimeMillis() >= session.nextRequest));
         data.put("error", session == null ? "" : session.error);
         var settings = new LinkedHashMap<String, Object>(c.living.settings.context());
-        settings.put("follow_distance", c.living.settings.followDistance); data.put("settings", settings);
+        settings.put("follow_distance", c.living.settings.followDistance);
+        settings.put("save_memory", c.saveMemory);
+        data.put("settings", settings);
         var traits = new LinkedHashMap<String, Object>(); c.living.personality.context().forEach((key, value) -> traits.put(key, ((Number) value).doubleValue() * 100));
         data.put("traits", traits); data.put("emotions", c.living.emotions.context());
         data.put("last_action_result", c.living.lastAction.status() == ActionResult.Status.NONE ? "" : c.living.lastAction.message());
@@ -2707,7 +2724,7 @@ public final class MarkAIMod implements ModInitializer {
                 groupStates.forEach((owner, state) -> savedGroups.put(owner, memoryEnabled() && memoryPersistenceEnabled() ? state
                     : new GroupChatState(state.enabled(), state.mutualReplies(), List.of())));
                 companionStore.write(statePath(), companions.values(), companions.selections(), savedGroups,
-                    memoryPersistenceEnabled());
+                    c -> memoryPersistenceEnabled() && c.saveMemory);
             } catch (IOException | RuntimeException e) {
                 storageHealthy = false;
                 LOG.error("Cannot save MarkAI state; further commands disabled", e);

@@ -92,6 +92,8 @@
   "markai.setting.hud": "HUD",
   "markai.setting.defense": "Defense",
   "markai.setting.autochat": "Auto chat",
+  "markai.setting.save_memory": "Save this companion's memory",
+  "markai.setting.save_memory_hint": "Works when global memory saving is enabled. When off, this companion's history is omitted from the world save.",
   "markai.setting.follow_distance": "Follow distance",
   "markai.trait.loyalty": "Loyalty",
   "markai.trait.curiosity": "Curiosity",

@@ -46,6 +46,7 @@ public final class CompanionScreen extends Screen {
     private Button previousCompanion, nextCompanion, previousCard, nextCard;
     private final List<Button> memoryButtons = new ArrayList<>();
     private final List<Button> settingButtons = new ArrayList<>();
+    private Button saveMemoryButton;
     private final List<Button> traitButtons = new ArrayList<>();
 
     public CompanionScreen(Tab initialTab, boolean quick) {
@@ -75,6 +76,7 @@ public final class CompanionScreen extends Screen {
         journalBiomePrev = null; journalBiomeNext = null;
         previousCard = null; nextCard = null;
         memoryButtons.clear(); settingButtons.clear(); traitButtons.clear(); journalSpeciesButtons.clear(); journalNoteButtons.clear();
+        saveMemoryButton = null;
         addButton("×", left + panelWidth - 29, top + 8, 20, () -> minecraft.gui.setScreen(null));
         addButton(label("markai.hub.open_short"), left + 80, top + 8, 32, MarkAIClient::showHub)
             .setTooltip(Tooltip.create(tr("markai.hub.title")));
@@ -388,6 +390,9 @@ public final class CompanionScreen extends Screen {
                     MarkAIClient.setting("trait_" + trait, Double.toString(value >= 100 ? 0 : Math.min(100, value + 10)));
                 }));
             }
+            saveMemoryButton = addButton("", left + 10, contentTop + 54, panelWidth - 20, () ->
+                MarkAIClient.setting("save_memory", Boolean.toString(!ClientCompanionState.bool(state().settings(), "save_memory", true))));
+            saveMemoryButton.setTooltip(Tooltip.create(tr("markai.setting.save_memory_hint")));
             return;
         }
         int w = (panelWidth - 26) / 2;
@@ -471,6 +476,8 @@ public final class CompanionScreen extends Screen {
                 : label(ClientCompanionState.bool(state().settings(), key, !key.equals("autochat")) ? "markai.ui.on" : "markai.ui.off");
             settingButtons.get(i).setMessage(Component.literal(label("markai.setting." + key) + ": " + value));
         }
+        if (saveMemoryButton != null) saveMemoryButton.setMessage(Component.literal(label("markai.setting.save_memory")
+            + ": " + label(ClientCompanionState.bool(state().settings(), "save_memory", true) ? "markai.ui.on" : "markai.ui.off")));
         for (int i = 0; i < traitButtons.size(); i++) {
             String key = TRAITS[i];
             traitButtons.get(i).setMessage(Component.literal(label("markai.trait." + key) + ": " + String.format(Locale.ROOT, "%.0f", ClientCompanionState.number(state().traits(), key, 50))));

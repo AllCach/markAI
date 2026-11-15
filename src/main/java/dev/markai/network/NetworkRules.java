@@ -72,7 +72,7 @@ public final class NetworkRules {
             && setting(key.substring(4), value);
         if (Set.of("group_enabled", "mutual_replies").contains(key)) return value.equals("true") || value.equals("false");
         if (key.equals("memory_persistence")) return value.equals("true") || value.equals("false");
-        if (Set.of("hud", "defense", "autochat").contains(key)) return value.equals("true") || value.equals("false");
+        if (Set.of("hud", "defense", "autochat", "save_memory").contains(key)) return value.equals("true") || value.equals("false");
         if (key.equals("name")) return !value.isBlank() && value.length() <= 32 && value.codePoints().noneMatch(Character::isISOControl);
         if (key.equals("follow_distance")) return number(value, 2, 16);
         if (TRAITS.contains(key)) return number(value, 0, 100);

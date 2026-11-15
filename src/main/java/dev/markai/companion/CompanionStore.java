@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /** Versioned companion persistence with bounded, strict input and an exact legacy migration backup. */
 public final class CompanionStore<T> {
@@ -68,20 +69,25 @@ public final class CompanionStore<T> {
 
     public void write(Path path, Collection<T> companions, Map<UUID, UUID> selected,
                       Map<UUID, GroupChatState> groups, boolean saveMemory) throws IOException {
+        write(path, companions, selected, groups, ignored -> saveMemory);
+    }
+
+    public void write(Path path, Collection<T> companions, Map<UUID, UUID> selected,
+                      Map<UUID, GroupChatState> groups, Predicate<T> saveMemory) throws IOException {
         write(path, new Snapshot<>(new ArrayList<>(companions), selected, groups, false), saveMemory);
     }
 
     public void write(Path path, Snapshot<T> snapshot) throws IOException {
-        write(path, snapshot, true);
+        write(path, snapshot, ignored -> true);
     }
 
-    private void write(Path path, Snapshot<T> snapshot, boolean saveMemory) throws IOException {
+    private void write(Path path, Snapshot<T> snapshot, Predicate<T> saveMemory) throws IOException {
         JsonObject root = new JsonObject();
         root.addProperty("schemaVersion", SCHEMA_VERSION);
         JsonArray records = new JsonArray();
         for (T companion : snapshot.companions()) {
             JsonObject record = JSON.toJsonTree(companion, recordType).getAsJsonObject();
-            if (!saveMemory) {
+            if (!saveMemory.test(companion)) {
                 record.remove("memory");
                 if (record.has("living") && record.get("living").isJsonObject())
                     record.getAsJsonObject("living").remove("events");
