@@ -214,6 +214,29 @@ public final class MultiCompanionGameTest {
         helper.succeed();
     }
 
+    @GameTest(structure = "markai-test:arena", maxTicks = 100)
+    public void removingChickenKeepsTheSameLivingAnimal(GameTestHelper helper) throws Exception {
+        for (int x = 0; x < 32; x++) for (int z = 0; z < 32; z++)
+            helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+        ServerPlayer owner = player(helper, 2, 2, 2);
+        ServerPlayer stranger = player(helper, 4, 2, 2);
+        MarkAIMod mod = FabricLoader.getInstance().getEntrypoints("main", ModInitializer.class).stream()
+            .filter(MarkAIMod.class::isInstance).map(MarkAIMod.class::cast).findFirst().orElseThrow();
+        command(owner, "mark spawn chicken");
+        var registry = TestCompanions.registry(mod);
+        var companion = registry.selected(owner.getUUID());
+        Chicken chicken = (Chicken) helper.getLevel().getEntity(companion.entity);
+        UUID originalId = chicken.getUUID();
+        backend().remove(stranger, companion.id.toString());
+        helper.assertTrue(registry.get(companion.id) == companion && chicken.isAlive(),
+            "A different owner cannot remove this chicken");
+        backend().remove(owner, companion.id.toString());
+        helper.assertTrue(registry.get(companion.id) == null && chicken.isAlive()
+                && chicken.getUUID().equals(originalId) && helper.getLevel().getEntity(originalId) == chicken,
+            "Removing a chicken from pets preserves the physical animal and its UUID");
+        helper.succeed();
+    }
+
     @GameTest(structure = "markai-test:arena", maxTicks = 300)
     public void groupCollectionTransfersOneRealStackExactlyOnce(GameTestHelper helper) throws Exception {
         for (int x = 0; x < 32; x++) for (int z = 0; z < 32; z++) helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);

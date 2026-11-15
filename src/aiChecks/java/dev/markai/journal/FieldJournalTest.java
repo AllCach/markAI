@@ -151,8 +151,25 @@ public final class FieldJournalTest {
             check(loaded.get(owner).addNote("minecraft:wolf", "Second note", 125),
                 "Restored note IDs continue without collision");
 
-            Files.writeString(path, "{\"schemaVersion\":99,\"owners\":{}}", StandardCharsets.UTF_8);
+            String duplicate = "{\"schemaVersion\":1,\"owners\":{},\"owners\":{}}";
+            Files.writeString(path, duplicate, StandardCharsets.UTF_8);
             boolean rejected = false;
+            try { store.read(path); } catch (IOException expected) { rejected = true; }
+            check(rejected, "Duplicate journal fields are rejected before Gson can overwrite data");
+            rejected = false;
+            try { store.write(path, Map.of(owner, original)); } catch (IOException expected) { rejected = true; }
+            check(rejected && Files.readString(path).equals(duplicate),
+                "A damaged journal changed after startup cannot be overwritten by a later save");
+
+            String lossy = "{\"schemaVersion\":1,\"owners\":{\"" + owner
+                + "\":{\"entries\":{\"bad species\":{}}}}}";
+            Files.writeString(path, lossy, StandardCharsets.UTF_8);
+            rejected = false;
+            try { store.read(path); } catch (IOException expected) { rejected = true; }
+            check(rejected, "Journal normalization cannot silently discard an invalid saved entry");
+
+            Files.writeString(path, "{\"schemaVersion\":99,\"owners\":{}}", StandardCharsets.UTF_8);
+            rejected = false;
             try { store.read(path); } catch (IOException expected) { rejected = true; }
             check(rejected, "Unknown schema version is rejected");
 

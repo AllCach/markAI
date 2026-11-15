@@ -76,6 +76,12 @@ tasks.register('companionRegistryTest', JavaExec) {
     classpath = sourceSets.aiChecks.runtimeClasspath
     mainClass = 'dev.markai.companion.CompanionRegistryTest'
 }
+tasks.register('worldSaveAudit', JavaExec) {
+    dependsOn aiChecksClasses
+    classpath = sourceSets.aiChecks.runtimeClasspath
+    mainClass = 'dev.markai.WorldSaveAudit'
+    if (project.hasProperty('auditManifest')) args project.property('auditManifest')
+}
 check.dependsOn companionRegistryTest
 
 tasks.register('legacyCompanionSpeciesTest', JavaExec) {

@@ -4,25 +4,16 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
-import com.google.gson.Strictness;
-import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonToken;
+import dev.markai.persistence.StrictJson;
+import dev.markai.persistence.AtomicFileReplace;
 import java.io.IOException;
-import java.io.StringReader;
-import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AccessDeniedException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -124,39 +115,12 @@ public final class CompanionStore<T> {
      * Other failures (including malformed existing data) still propagate to the caller.
      */
     static void moveWithRetry(Path temporary, Path target, MoveOperation operation) throws IOException {
-        final int retries = 5;
-        for (int attempt = 0; ; attempt++) {
-            try {
-                try {
-                    operation.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                } catch (AtomicMoveNotSupportedException unsupported) {
-                    operation.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-                }
-                return;
-            } catch (AccessDeniedException blocked) {
-                if (attempt == retries) throw blocked;
-                try {
-                    Thread.sleep(10L << attempt);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    IOException failure = new IOException("Interrupted while waiting to replace companion save", interrupted);
-                    failure.addSuppressed(blocked);
-                    throw failure;
-                }
-            }
-        }
+        AtomicFileReplace.replace(temporary, target, operation::move);
     }
 
     private Snapshot<T> decode(byte[] bytes) throws IOException {
         try {
-            String text = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString();
-            JsonElement root;
-            try (JsonReader reader = new JsonReader(new StringReader(text))) {
-                reader.setStrictness(Strictness.STRICT);
-                root = readJson(reader, 0);
-                if (reader.peek() != JsonToken.END_DOCUMENT) throw new IOException("Trailing JSON content");
-            }
+            JsonElement root = StrictJson.parse(bytes);
             boolean legacy = root.isJsonArray();
             JsonArray records;
             Map<UUID, UUID> selections = new LinkedHashMap<>();
@@ -222,33 +186,4 @@ public final class CompanionStore<T> {
         return result;
     }
 
-    /** Unlike Gson's tree adapter, this rejects duplicate object keys before any data can be overwritten. */
-    private static JsonElement readJson(JsonReader reader, int depth) throws IOException {
-        if (depth > 128) throw new IOException("Companion store nesting limit exceeded");
-        return switch (reader.peek()) {
-            case BEGIN_ARRAY -> {
-                reader.beginArray();
-                JsonArray array = new JsonArray();
-                while (reader.hasNext()) array.add(readJson(reader, depth + 1));
-                reader.endArray();
-                yield array;
-            }
-            case BEGIN_OBJECT -> {
-                reader.beginObject();
-                JsonObject object = new JsonObject();
-                while (reader.hasNext()) {
-                    String name = reader.nextName();
-                    if (object.has(name)) throw new IOException("Duplicate JSON field: " + name);
-                    object.add(name, readJson(reader, depth + 1));
-                }
-                reader.endObject();
-                yield object;
-            }
-            case STRING -> new JsonPrimitive(reader.nextString());
-            case NUMBER -> new JsonPrimitive(new BigDecimal(reader.nextString()));
-            case BOOLEAN -> new JsonPrimitive(reader.nextBoolean());
-            case NULL -> { reader.nextNull(); yield JsonNull.INSTANCE; }
-            default -> throw new IOException("Expected JSON value");
-        };
-    }
 }

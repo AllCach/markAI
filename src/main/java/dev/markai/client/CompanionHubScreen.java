@@ -149,7 +149,7 @@ public final class CompanionHubScreen extends Screen {
         input=addRenderableWidget(new EditBox(font,x,y,inputWidth,20,tr("markai.hub.message")));
         input.setMaxLength(512); input.setHint(tr("markai.hub.message")); input.setValue(draft); input.setResponder(ignored -> updateButtons());
         send=button(label("markai.ui.send"),x+inputWidth+6,y,82,this::sendMessage);
-        cancel=button(label("markai.ui.cancel"),x+inputWidth+94,y,68,()->MarkAIClient.action("group_cancel"));
+        cancel=button(label("markai.ui.cancel"),x+inputWidth+94,y,68,MarkAIClient::cancel);
         setInitialFocus(input);
     }
     private void initSettings() {

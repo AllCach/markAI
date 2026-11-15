@@ -24,6 +24,9 @@ public final class CompanionNetwork {
     private static final Map<UUID, Limits> LIMITS = new HashMap<>();
     private static Backend backend;
 
+    /** Packet cooldowns and page selections belong to one server session, never to the next world. */
+    public static void clearRuntime() { LIMITS.clear(); }
+
     public interface Backend {
         String snapshot(ServerPlayer player);
         void command(ServerPlayer player, String action);
@@ -38,7 +41,7 @@ public final class CompanionNetwork {
         String journalPage(ServerPlayer player, String speciesId, int speciesOffset, int noteOffset, int biomeOffset);
     }
     private static final class Limits {
-        long refreshAt, actionAt, chatAt, rateNoticeAt, journalAt;
+        long refreshAt, actionAt, chatAt, cancelAt, rateNoticeAt, journalAt;
         JournalPageRequest lastJournalRequest = new JournalPageRequest(0, "", 0, 0);
     }
     private CompanionNetwork() {}
@@ -170,7 +173,18 @@ public final class CompanionNetwork {
                 backend.chat(player, payload.message());
             });
         });
-        ServerPlayNetworking.registerGlobalReceiver(Cancel.TYPE, (payload, context) -> mutate(context.player(), () -> backend.cancel(context.player())));
+        ServerPlayNetworking.registerGlobalReceiver(Cancel.TYPE, (payload, context) -> {
+            ServerPlayer player = context.player();
+            Limits limits = LIMITS.computeIfAbsent(player.getUUID(), key -> new Limits());
+            long now = System.nanoTime();
+            if (now < limits.cancelAt) return;
+            limits.cancelAt = now + 250_000_000L;
+            try { backend.cancel(player); sendSnapshot(player); }
+            catch (RuntimeException error) {
+                LOG.warn("Companion UI cancellation failed ({})", error.getClass().getSimpleName());
+                notice(player, "error", "Не удалось отменить ожидание.");
+            }
+        });
         ServerPlayNetworking.registerGlobalReceiver(GroupChat.TYPE, (payload, context) -> {
             ServerPlayer player = context.player();
             Limits limits = LIMITS.computeIfAbsent(player.getUUID(), key -> new Limits());
@@ -242,7 +256,7 @@ public final class CompanionNetwork {
         if (backend == null || !ServerPlayNetworking.canSend(player, Snapshot.TYPE)) return;
         try {
             String json = backend.snapshot(player);
-            if (json == null || json.length() > MAX_SNAPSHOT) {
+            if (!NetworkRules.utf8Fits(json, MAX_SNAPSHOT)) {
                 notice(player, "error", "Слишком большой снимок состояния компаньона."); return;
             }
             ServerPlayNetworking.send(player, new Snapshot(json));

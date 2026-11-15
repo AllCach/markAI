@@ -4,14 +4,15 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import dev.markai.persistence.AtomicFileReplace;
+import dev.markai.persistence.StrictJson;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -26,14 +27,9 @@ public final class FieldJournalStore {
 
     public Map<UUID, FieldJournal> read(Path path) throws IOException {
         if (!Files.exists(path)) return new LinkedHashMap<>();
-        long size = Files.size(path);
-        if (size < 2 || size > MAX_BYTES) throw new IOException("Field journal file size is invalid");
-        JsonElement parsed;
-        try {
-            parsed = JsonParser.parseString(Files.readString(path, StandardCharsets.UTF_8));
-        } catch (RuntimeException failure) {
-            throw new IOException("Field journal file is malformed", failure);
-        }
+        byte[] bytes = readBounded(path);
+        if (bytes.length < 2) throw new IOException("Field journal file size is invalid");
+        JsonElement parsed = StrictJson.parse(bytes);
         if (!parsed.isJsonObject()) throw new IOException("Field journal root must be an object");
         JsonObject root = parsed.getAsJsonObject();
         if (!root.has("schemaVersion") || !root.get("schemaVersion").isJsonPrimitive()
@@ -49,6 +45,8 @@ public final class FieldJournalStore {
             UUID owner;
             try {
                 owner = UUID.fromString(item.getKey());
+                if (!owner.toString().equalsIgnoreCase(item.getKey()))
+                    throw new IllegalArgumentException("Noncanonical UUID");
             } catch (IllegalArgumentException invalid) {
                 throw new IOException("Invalid field journal owner UUID", invalid);
             }
@@ -60,7 +58,10 @@ public final class FieldJournalStore {
                 throw new IOException("Could not decode field journal", failure);
             }
             if (journal == null) throw new IOException("Empty field journal owner record");
+            JsonElement original = JSON.toJsonTree(journal, FieldJournal.class);
             journal.normalize();
+            if (!original.equals(JSON.toJsonTree(journal, FieldJournal.class)))
+                throw new IOException("Field journal contains invalid or lossy owner data");
             result.put(owner, journal);
         }
         return result;
@@ -86,16 +87,28 @@ public final class FieldJournalStore {
         Path absolute = path.toAbsolutePath().normalize();
         Path parent = absolute.getParent();
         Files.createDirectories(parent);
+        // A damaged on-disk file must remain untouched even if it changes after server startup.
+        if (Files.exists(absolute)) read(absolute);
         Path temporary = parent.resolve("." + absolute.getFileName() + "." + UUID.randomUUID() + ".tmp");
         try {
-            Files.write(temporary, output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-            try {
-                Files.move(temporary, absolute, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException unsupported) {
-                Files.move(temporary, absolute, StandardCopyOption.REPLACE_EXISTING);
+            try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+                ByteBuffer buffer = ByteBuffer.wrap(output);
+                while (buffer.hasRemaining()) channel.write(buffer);
+                channel.force(true);
             }
+            AtomicFileReplace.replace(temporary, absolute, (source, destination, options) ->
+                Files.move(source, destination, options));
         } finally {
             Files.deleteIfExists(temporary);
+        }
+    }
+
+    private static byte[] readBounded(Path path) throws IOException {
+        if (Files.size(path) > MAX_BYTES) throw new IOException("Field journal exceeds byte limit");
+        try (var input = Files.newInputStream(path)) {
+            byte[] bytes = input.readNBytes(MAX_BYTES + 1);
+            if (bytes.length > MAX_BYTES) throw new IOException("Field journal exceeds byte limit");
+            return bytes;
         }
     }
 }

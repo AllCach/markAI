@@ -89,6 +89,7 @@ public final class MarkAIMod implements ModInitializer {
     private static final Logger LOG = LoggerFactory.getLogger("markai");
     private static final Gson JSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Gson CHAT_JSON = new GsonBuilder().disableHtmlEscaping().create();
+    private static final int MEMORY_PAGE_SIZE = 8;
     private static final String AMBIENT_PROMPT = "[Самостоятельная реплика: игрок сейчас ничего не спрашивал. "
         + "Коротко отреагируй на свежую обстановку, событие или настроение из текущего снимка. "
         + "Не продолжай старый разговор и не повторяй recent_lines. Не придумывай близость дома, "
@@ -253,6 +254,7 @@ public final class MarkAIMod implements ModInitializer {
             .anyMatch(c -> wolfWork.mayAttack(c, wolf, target)));
         ServerLifecycleEvents.SERVER_STARTED.register(s -> {
             server = s;
+            CompanionNetwork.clearRuntime();
             companions.clear();
             fieldJournals.clear();
             fieldJournalStorageHealthy = true;
@@ -337,7 +339,7 @@ public final class MarkAIMod implements ModInitializer {
             CompanionMemory.shutdownWorkers();
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
-            companions.clear(); fieldJournals.clear(); configured.clear(); livingRuntime.clear(); wolfWork.clear(); balancedMobAI.clear(); memoryPages.clear(); ownerAutomaticAt.clear(); server = null;
+            companions.clear(); fieldJournals.clear(); configured.clear(); livingRuntime.clear(); wolfWork.clear(); balancedMobAI.clear(); memoryPages.clear(); ownerAutomaticAt.clear(); CompanionNetwork.clearRuntime(); server = null;
         });
         ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
             invalidateOwnerSessions(entity.getUUID());
@@ -1557,7 +1559,6 @@ public final class MarkAIMod implements ModInitializer {
         configured.remove(companion.entity);
         if (chicken != null) {
             chickenRuntime.stop(chicken);
-            chicken.discard();
         }
         if (wolf != null) {
             wolf.getNavigation().stop();
@@ -1574,7 +1575,7 @@ public final class MarkAIMod implements ModInitializer {
         companions.remove(owner.getUUID(), id);
         save();
         CompanionNetwork.notice(owner, "status", companion.living.name + (chickenSpecies
-            ? " убрана из MarkAI и мира." : " убран из MarkAI. Приручённый волк остался в мире."));
+            ? " убрана из MarkAI. Курица осталась в мире." : " убран из MarkAI. Приручённый волк остался в мире."));
     }
 
     /** A departing or dead owner may have multiple outstanding companion conversations. */
@@ -2110,13 +2111,13 @@ public final class MarkAIMod implements ModInitializer {
         if (session != null && session.pending != null && !session.pendingAutomatic && !session.pendingMessage.isBlank())
             history.add(Map.of("role", "user", "text", session.pendingMessage));
         data.put("messages", history);
-        var entries = c.memory.inspect(); int page = Math.min(memoryPages.getOrDefault(c.id, 0), Math.max(0, (entries.size() - 1) / 16));
+        var entries = c.memory.inspect(); int page = Math.min(memoryPages.getOrDefault(c.id, 0), Math.max(0, (entries.size() - 1) / MEMORY_PAGE_SIZE));
         memoryPages.put(c.id, page);
         data.put("memory_page", page); data.put("memory_total", entries.size());
-        data.put("memories", entries.stream().skip(page * 16L).limit(16).map(e -> Map.of("id", e.id().toString(), "category", e.category(),
+        data.put("memories", entries.stream().skip(page * (long) MEMORY_PAGE_SIZE).limit(MEMORY_PAGE_SIZE).map(e -> Map.of("id", e.id().toString(), "category", e.category(),
             "content", e.content(), "time", e.gameTime(), "source", e.sourceType().name() + "/" + e.reliability().name(), "importance", e.importance())).toList());
         String result = CHAT_JSON.toJson(data);
-        while (result.length() > CompanionNetwork.MAX_SNAPSHOT && (history.size() > 1 || groupHistory.size() > 1)) {
+        while (!NetworkRules.utf8Fits(result, CompanionNetwork.MAX_SNAPSHOT) && (history.size() > 1 || groupHistory.size() > 1)) {
             if (history.size() > groupHistory.size() && history.size() > 1) history.removeFirst();
             else if (groupHistory.size() > 1) groupHistory.removeFirst();
             else history.removeFirst();

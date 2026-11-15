@@ -72,6 +72,9 @@ public final class NetworkRulesTest {
         check(NetworkRules.setting("group_enabled","false")&&NetworkRules.setting("mutual_replies","true"),"Group boolean preferences");
         check(!NetworkRules.setting("mutual_replies","100"),"Reply budget cannot be supplied by a client");
         check(NetworkRules.action("group_cancel")&&!NetworkRules.action("all:group_cancel"),"Group conversation has its own owner-scoped cancellation");
+        check(!NetworkRules.utf8Fits("я".repeat(128), 128) && NetworkRules.utf8Fits("я".repeat(128), 256)
+                && !NetworkRules.utf8Fits(null, 256),
+            "Snapshot bounds count UTF-8 bytes and reject missing data");
         System.out.println("NetworkRulesTest: " + checks + " checks passed");
     }
     private static void check(boolean condition, String description) {

@@ -1,5 +1,6 @@
 package dev.markai.network;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.UUID;
 
@@ -31,6 +32,9 @@ public final class NetworkRules {
     }
     public static boolean chat(String message) {
         return message != null && !message.isBlank() && message.length() <= 512 && message.codePoints().noneMatch(Character::isISOControl);
+    }
+    public static boolean utf8Fits(String value, int maxBytes) {
+        return value != null && maxBytes >= 0 && value.getBytes(StandardCharsets.UTF_8).length <= maxBytes;
     }
     public static boolean memoryId(String id) {
         return canonicalId(id);
