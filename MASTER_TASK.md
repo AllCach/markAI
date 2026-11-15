@@ -1,4 +1,6 @@
-# CODEX MASTER TASK - MARKAI: LIVING COMPANION
+# CODEX MASTER TASK - MARKAI: LIVING COMPANION (HISTORICAL)
+
+This original wolf-focused specification is retained for project history. It is not the current release checklist or implementation status. The current 1.0 plan is [WORK_PLAN.md](WORK_PLAN.md); implemented features and open verification are in [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) and [TESTING.md](TESTING.md). Later user requirements for wolf and chicken companions supersede conflicting requirements below.
 
 ## YOUR ROLE
 

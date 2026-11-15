@@ -9,7 +9,7 @@
     "sources": "https://github.com/AllCach/markAI",
     "issues": "https://github.com/AllCach/markAI/issues"
   },
-  "description": "Living wolf companion Mark: personality, emotions, memory, dialogue, training, inventory and native companion UI.",
+  "description": "Living wolf and chicken companions with memory, dialogue, progression, group commands and native UI.",
   "environment": "*",
   "entrypoints": { "main": ["dev.markai.MarkAIMod"], "client": ["dev.markai.client.MarkAIClient"] },
   "mixins": ["markai.mixins.json"],

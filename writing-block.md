@@ -1,4 +1,6 @@
-# MarkAI 1.0 — Living World: план доведения до Pre-release
+# MarkAI 1.0 — Living World: исходный план доведения до Pre-release (архив)
+
+Ниже сохранён плановый документ. Его прежние даты, ветки и пункты проверки не являются текущим статусом. Фактическое состояние и следующий пакет работ теперь отражены в [WORK_PLAN.md](WORK_PLAN.md), [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) и [TESTING.md](TESTING.md).
 
 ## Цель
 
