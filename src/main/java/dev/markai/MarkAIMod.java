@@ -116,6 +116,7 @@ public final class MarkAIMod implements ModInitializer {
     private final Map<UUID, Integer> memoryPages = new HashMap<>();
     private final Map<UUID, Long> ownerAutomaticAt = new HashMap<>();
     private final Map<UUID, Long> attackMissNoticeAt = new HashMap<>();
+    private final Map<UUID, PendingAdoption> pendingAdoptions = new HashMap<>();
     private final Map<UUID, GroupChatState> groupStates = new LinkedHashMap<>();
     private final Map<UUID, GroupRun> groupRuns = new HashMap<>();
     private final Map<UUID, String> groupStatus = new HashMap<>();
@@ -128,6 +129,7 @@ public final class MarkAIMod implements ModInitializer {
         String speaker = "";
         GroupRun(GroupDialogueRound round, boolean chatOutput) { this.round = round; this.chatOutput = chatOutput; }
     }
+    private record PendingAdoption(UUID offerId, UUID entityId, UUID newId, String species, long expiresAt) { }
 
     private static final class AISession {
         boolean enabled = true;
@@ -217,6 +219,9 @@ public final class MarkAIMod implements ModInitializer {
             }
             public void setting(ServerPlayer player, String key, String value) { updateSetting(player, key, value); }
             public void remove(ServerPlayer player, String id) { removeCompanion(player, id); }
+            public void adoptionChoice(ServerPlayer player, String offerId, String profileId) {
+                chooseAdoptionProfile(player, offerId, profileId);
+            }
             public void journalNote(ServerPlayer player, String speciesId, String text, String noteId) {
                 if (!fieldJournalStorageHealthy) {
                     CompanionNetwork.notice(player, "error", "Журнал недоступен для записи: ошибка сохранения.");
@@ -266,6 +271,7 @@ public final class MarkAIMod implements ModInitializer {
             configured.clear();
             ticks = 0;
             attackMissNoticeAt.clear();
+            pendingAdoptions.clear();
             aiSessions.clear();
             groupStates.clear(); groupRuns.clear(); groupStatus.clear(); groupNextRequest.clear();
             memoryPages.clear(); ownerAutomaticAt.clear(); livingRuntime.clear(); wolfWork.clear();
@@ -344,10 +350,11 @@ public final class MarkAIMod implements ModInitializer {
             CompanionMemory.shutdownWorkers();
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
-            companions.clear(); fieldJournals.clear(); configured.clear(); livingRuntime.clear(); wolfWork.clear(); balancedMobAI.clear(); memoryPages.clear(); ownerAutomaticAt.clear(); CompanionNetwork.clearRuntime(); server = null;
+            companions.clear(); fieldJournals.clear(); configured.clear(); livingRuntime.clear(); wolfWork.clear(); balancedMobAI.clear(); memoryPages.clear(); ownerAutomaticAt.clear(); pendingAdoptions.clear(); CompanionNetwork.clearRuntime(); server = null;
         });
         ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
             invalidateOwnerSessions(entity.getUUID());
+            pendingAdoptions.remove(entity.getUUID());
             Companion c = companions.byEntity(entity.getUUID());
             if (c != null) {
                 wolfWork.remove(c.entity);
@@ -683,8 +690,12 @@ public final class MarkAIMod implements ModInitializer {
             return wolfNotice(owner, registered.living.name + " уже твой компаньон.", true);
         }
         int ownedCount = companions.owned(owner.getUUID()).size();
-        if (ownedCount >= CompanionRegistry.MAX_COMPANIONS_PER_OWNER)
-            return wolfNotice(owner, "Достигнут предел компаньонов: " + CompanionRegistry.MAX_COMPANIONS_PER_OWNER, false);
+        if (ownedCount >= CompanionRegistry.MAX_COMPANIONS_PER_OWNER) {
+            if (reusableProfiles(owner, CompanionSpecies.WOLF.id()).isEmpty())
+                return wolfNotice(owner, "Достигнут предел компаньонов: " + CompanionRegistry.MAX_COMPANIONS_PER_OWNER, false);
+            offerAdoption(owner, wolf, null, CompanionSpecies.WOLF.id());
+            return wolfNotice(owner, "Выбери профиль погибшего волка. Новое место в списке недоступно.", true);
+        }
         Companion companion = new Companion(); companion.owner = owner.getUUID(); companion.entity = wolf.getUUID();
         companion.id = UUID.randomUUID();
         companion.living = LivingState.forIdentity(companion.id);
@@ -703,6 +714,7 @@ public final class MarkAIMod implements ModInitializer {
         // A new tame joins the owner's roster without stealing focus from Walk.
         // The registry selects it automatically only when this is the first companion.
         configure(companion, wolf); save();
+        offerAdoption(owner, wolf, companion.id, companion.species);
         return wolfNotice(owner, companion.living.name + " стал твоим компаньоном. Shift + ПКМ — сумка; /walk attack — атаковать цель; /walk collect — собрать предметы.", true);
     }
 
@@ -726,8 +738,12 @@ public final class MarkAIMod implements ModInitializer {
         }
         int ownedCount = companions.owned(owner.getUUID()).size();
         if (ownedCount >= CompanionRegistry.MAX_COMPANIONS_PER_OWNER) {
-            popupNotice(owner, "Достигнут предел компаньонов: " + CompanionRegistry.MAX_COMPANIONS_PER_OWNER, false);
-            return CompanionTamingInteractions.RegistrationResult.REJECTED;
+            if (reusableProfiles(owner, CompanionSpecies.CHICKEN.id()).isEmpty()) {
+                popupNotice(owner, "Достигнут предел компаньонов: " + CompanionRegistry.MAX_COMPANIONS_PER_OWNER, false);
+                return CompanionTamingInteractions.RegistrationResult.REJECTED;
+            }
+            offerAdoption(owner, chicken, null, CompanionSpecies.CHICKEN.id());
+            return CompanionTamingInteractions.RegistrationResult.ADOPTED;
         }
         Companion companion = new Companion();
         companion.owner = owner.getUUID();
@@ -757,8 +773,109 @@ public final class MarkAIMod implements ModInitializer {
         chickenRuntime.configure(chicken, companion.living.name);
         chickenRuntime.follow(chicken, owner);
         save();
+        offerAdoption(owner, chicken, companion.id, companion.species);
         popupNotice(owner, companion.living.name + " приручена и добавлена в MarkAI.", true);
         return CompanionTamingInteractions.RegistrationResult.ADOPTED;
+    }
+
+    private List<Companion> reusableProfiles(ServerPlayer owner, String species) {
+        return companions.owned(owner.getUUID()).stream()
+            .filter(c -> c.dead && species.equals(c.species)).toList();
+    }
+
+    private void offerAdoption(ServerPlayer owner, LivingEntity animal, UUID newId, String species) {
+        UUID offerId = UUID.randomUUID();
+        pendingAdoptions.put(owner.getUUID(), new PendingAdoption(offerId, animal.getUUID(), newId,
+            species, System.currentTimeMillis() + 60_000));
+        var profiles = reusableProfiles(owner, species).stream()
+            .map(c -> Map.of("id", c.id.toString(), "name", c.living.name,
+                "level", c.progression.level())).toList();
+        CompanionNetwork.sendAdoptionOffer(owner, CHAT_JSON.toJson(Map.of(
+            "offer_id", offerId.toString(), "species", species,
+            "can_new", newId != null, "profiles", profiles)));
+    }
+
+    private void chooseAdoptionProfile(ServerPlayer owner, String offerId, String profileId) {
+        PendingAdoption offer = pendingAdoptions.get(owner.getUUID());
+        if (offer == null || !offer.offerId.toString().equals(offerId)
+                || System.currentTimeMillis() > offer.expiresAt) {
+            if (offer != null && offer.offerId.toString().equals(offerId)) pendingAdoptions.remove(owner.getUUID());
+            CompanionNetwork.notice(owner, "error", "Выбор профиля устарел. Приручённое животное осталось в мире.");
+            return;
+        }
+        pendingAdoptions.remove(owner.getUUID());
+        if (profileId.isEmpty()) {
+            if (offer.newId != null) {
+                Companion fresh = companions.get(offer.newId);
+                if (fresh != null && fresh.owner.equals(owner.getUUID()) && fresh.entity.equals(offer.entityId)) {
+                    companions.select(owner.getUUID(), fresh.id);
+                    save();
+                    CompanionNetwork.notice(owner, "status", "Создан новый профиль: " + fresh.living.name);
+                }
+            } else CompanionNetwork.notice(owner, "error", "Список заполнен: выбери погибшего питомца или освободи место.");
+            return;
+        }
+        Companion previous = companions.get(UUID.fromString(profileId));
+        Companion fresh = offer.newId == null ? null : companions.get(offer.newId);
+        if (previous == null || !previous.owner.equals(owner.getUUID()) || !previous.dead
+                || !offer.species.equals(previous.species) || previous.id.equals(offer.newId)
+                || offer.newId != null && (fresh == null || !fresh.owner.equals(owner.getUUID())
+                    || !fresh.entity.equals(offer.entityId))) {
+            CompanionNetwork.notice(owner, "error", "Этот старый профиль недоступен.");
+            return;
+        }
+        Entity animal = null;
+        for (ServerLevel level : server.getAllLevels()) {
+            animal = level.getEntity(offer.entityId);
+            if (animal != null) break;
+        }
+        if (!(animal instanceof LivingEntity living) || !living.isAlive() || living.level() != owner.level()
+                || offer.species.equals(CompanionSpecies.WOLF.id()) && (!(living instanceof Wolf wolf) || !wolf.isOwnedBy(owner))
+                || offer.species.equals(CompanionSpecies.CHICKEN.id()) && !(living instanceof Chicken)
+                || companions.byEntity(offer.entityId) != fresh) {
+            CompanionNetwork.notice(owner, "error", "Приручённый питомец уже недоступен.");
+            return;
+        }
+        if (fresh != null) {
+            AISession session = aiSessions.remove(fresh.id);
+            if (session != null) invalidate(session);
+            memoryPages.remove(fresh.id);
+            if (living instanceof Wolf wolf) {
+                cancelTrick(fresh);
+                wolfWork.remove(fresh.entity);
+                livingRuntime.unconfigure(fresh, wolf);
+                wolfWork.unconfigure(wolf);
+                ((MobAccessor) wolf).markai$goals().removeAllGoals(goal -> goal instanceof DogTrickGoal);
+                configured.remove(wolf.getUUID());
+                livingRuntime.remove(wolf.getUUID());
+            }
+            companions.remove(owner.getUUID(), fresh.id);
+        }
+        AISession previousSession = aiSessions.remove(previous.id);
+        if (previousSession != null) invalidate(previousSession);
+        previous.entity = offer.entityId;
+        previous.dead = false;
+        previous.dismissed = false;
+        previous.following = living instanceof Wolf wolf ? !wolf.isOrderedToSit() : true;
+        previous.territory = null;
+        previous.requestedAction = null;
+        previous.workActive = false;
+        previous.trick = null;
+        previous.action = "FOLLOW";
+        if (living instanceof Wolf wolf) {
+            wolf.setTarget(null);
+            wolf.getNavigation().stop();
+        } else if (living instanceof Chicken chicken) chickenRuntime.stop(chicken);
+        remember(previous, living, (ServerLevel) living.level());
+        companions.add(previous);
+        companions.select(owner.getUUID(), previous.id);
+        if (living instanceof Wolf wolf) configure(previous, wolf);
+        else if (living instanceof Chicken chicken) {
+            chickenRuntime.configure(chicken, previous.living.name);
+            chickenRuntime.follow(chicken, owner);
+        }
+        save();
+        CompanionNetwork.notice(owner, "status", "Профиль «" + previous.living.name + "» привязан к новому питомцу.");
     }
 
     private int wolfNotice(ServerPlayer owner, String message, boolean success) {
@@ -1802,6 +1919,25 @@ public final class MarkAIMod implements ModInitializer {
 
     private void updateSetting(ServerPlayer owner, String key, String value) {
         if (!storageHealthy || !NetworkRules.setting(key, value)) return;
+        if (key.equals("memory_persistence")) {
+            if (!canManageMemoryPersistence(owner) || aiConfig == null) {
+                CompanionNetwork.notice(owner, "error", "Менять сохранение памяти может только владелец мира или оператор сервера.");
+                return;
+            }
+            boolean enabled = Boolean.parseBoolean(value);
+            try {
+                AIConfig.saveMemoryPreference(FabricLoader.getInstance().getConfigDir().resolve("markai.json"), enabled);
+                aiConfig.saveCompanionMemory = enabled;
+                save();
+                CompanionNetwork.notice(owner, storageHealthy ? "status" : "error", !storageHealthy
+                    ? "Настройка изменена, но мир не удалось сохранить. Проверь журнал сервера."
+                    : enabled ? "Память питомцев будет сохраняться." : "Память питомцев больше не записывается в мир.");
+            } catch (IOException error) {
+                LOG.warn("Cannot update companion memory persistence", error);
+                CompanionNetwork.notice(owner, "error", "Не удалось сохранить настройку памяти.");
+            }
+            return;
+        }
         if (key.equals("group_enabled") || key.equals("mutual_replies")) {
             if (companions.owned(owner.getUUID()).isEmpty()) return;
             GroupChatState state = groupState(owner.getUUID());
@@ -2082,10 +2218,17 @@ public final class MarkAIMod implements ModInitializer {
             available.add(summary);
         }
         Companion c = companions.selected(owner.getUUID());
-        if (c == null) return CHAT_JSON.toJson(Map.of("name", "Марк", "activity", "NOT_CREATED",
-            "ai_status", "Создайте компаньона", "messages", List.of(), "memories", List.of(),
-            "companions", available, "group", groupSnapshot(owner), "group_messages", groupState(owner.getUUID()).messages(),
-            "common_settings", commonSettings(owner)));
+        if (c == null) {
+            var empty = new LinkedHashMap<String, Object>();
+            empty.put("name", "Марк"); empty.put("activity", "NOT_CREATED");
+            empty.put("ai_status", "Создайте компаньона"); empty.put("messages", List.of());
+            empty.put("memories", List.of()); empty.put("companions", available);
+            empty.put("group", groupSnapshot(owner)); empty.put("group_messages", groupState(owner.getUUID()).messages());
+            empty.put("common_settings", commonSettings(owner));
+            empty.put("memory_persistence", memoryPersistenceEnabled());
+            empty.put("can_manage_memory_persistence", canManageMemoryPersistence(owner));
+            return CHAT_JSON.toJson(empty);
+        }
         c.memory.flushPending(); c.living.normalize();
         LivingEntity entity = CompanionSpecies.CHICKEN.id().equals(c.species) ? findChicken(c) : find(c);
         AISession session = aiSessions.get(c.id);
@@ -2093,6 +2236,8 @@ public final class MarkAIMod implements ModInitializer {
         data.put("companions", available);
         data.put("group", groupSnapshot(owner));
         data.put("common_settings", commonSettings(owner));
+        data.put("memory_persistence", memoryPersistenceEnabled());
+        data.put("can_manage_memory_persistence", canManageMemoryPersistence(owner));
         var groupHistory = new ArrayList<>(groupState(owner.getUUID()).messages());
         data.put("group_messages", groupHistory);
         data.put("name", c.living.name); data.put("species", c.species); data.put("dead", c.dead); data.put("entity_uuid", c.entity.toString()); data.put("entity_id", entity == null ? -1 : entity.getId());
@@ -2527,6 +2672,11 @@ public final class MarkAIMod implements ModInitializer {
     private Path statePath() { return server.getWorldPath(LevelResource.ROOT).resolve("markai.json"); }
     private Path fieldJournalPath() { return server.getWorldPath(LevelResource.ROOT).resolve("field-journal.json"); }
     private boolean memoryEnabled() { return aiConfig == null || aiConfig.memoryEnabled; }
+    private boolean memoryPersistenceEnabled() { return aiConfig == null || aiConfig.saveCompanionMemory; }
+    private boolean canManageMemoryPersistence(ServerPlayer owner) {
+        return server != null && (server.isSingleplayerOwner(owner.nameAndId())
+            || server.getPlayerList().isOp(owner.nameAndId()));
+    }
 
     private void observeNearbyEntities(MinecraftServer currentServer) {
         for (ServerPlayer owner : currentServer.getPlayerList().getPlayers()) {
@@ -2554,9 +2704,10 @@ public final class MarkAIMod implements ModInitializer {
             try {
                 for (Companion c : companions.values()) c.memory.flushPending();
                 Map<UUID, GroupChatState> savedGroups = new LinkedHashMap<>();
-                groupStates.forEach((owner, state) -> savedGroups.put(owner, memoryEnabled() ? state
+                groupStates.forEach((owner, state) -> savedGroups.put(owner, memoryEnabled() && memoryPersistenceEnabled() ? state
                     : new GroupChatState(state.enabled(), state.mutualReplies(), List.of())));
-                companionStore.write(statePath(), companions.values(), companions.selections(), savedGroups);
+                companionStore.write(statePath(), companions.values(), companions.selections(), savedGroups,
+                    memoryPersistenceEnabled());
             } catch (IOException | RuntimeException e) {
                 storageHealthy = false;
                 LOG.error("Cannot save MarkAI state; further commands disabled", e);

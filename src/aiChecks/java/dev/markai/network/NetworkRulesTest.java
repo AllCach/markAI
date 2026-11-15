@@ -30,6 +30,8 @@ public final class NetworkRulesTest {
         check(!NetworkRules.chat(null), "Null message");
         check(NetworkRules.memoryId("f5095bb5-b54c-4c67-bc62-ab7222f5b33a"), "Canonical memory UUID");
         check(NetworkRules.companionId("f5095bb5-b54c-4c67-bc62-ab7222f5b33a"), "Canonical companion UUID");
+        check(NetworkRules.setting("memory_persistence", "false") && NetworkRules.setting("memory_persistence", "true")
+            && !NetworkRules.setting("memory_persistence", "maybe"), "Memory persistence accepts only booleans");
         check(!NetworkRules.companionId(null), "Null companion UUID");
         check(NetworkRules.journalSpeciesId("minecraft:wolf"), "Valid journal species ID");
         check(!NetworkRules.journalSpeciesId("../markai.json") && !NetworkRules.journalSpeciesId("WOLF"),

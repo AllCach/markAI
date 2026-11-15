@@ -34,7 +34,8 @@ public final class LlmProviderTest {
                     .getAsJsonObject("schema").getAsJsonObject("properties").getAsJsonObject("action").getAsJsonArray("enum");
                 check(action.size() == 1 && action.get(0).getAsString().equals("follow"), "Schema restricts the requested action");
                 String prompt = body.getAsJsonArray("messages").get(0).getAsJsonObject().get("content").getAsString();
-                check(prompt.contains("talking wolf") && prompt.contains("Марк"), "Talking-wolf persona and actual identity reach provider");
+                check(prompt.contains("companion.type") && prompt.contains("Марк"),
+                    "Species-aware persona and actual identity reach provider");
             }
             try (var client = server.provider("private-test-token", Duration.ofSeconds(2))) {
                 client.ask("{}", "Сюда!", List.of()).get(3, TimeUnit.SECONDS);
@@ -108,6 +109,12 @@ public final class LlmProviderTest {
             var legacy = AIConfig.load(path);
             check(legacy.effectiveModel().equals("qwen3:4b") && legacy.provider.equals("ollama"), "Legacy local Ollama config migrates without losing selected model");
             check(legacy.combatRadius == 32, "Legacy config receives the 32-block combat-radius default");
+            AIConfig.saveMemoryPreference(path, false);
+            check(!AIConfig.load(path).saveCompanionMemory && Files.readString(path).contains("qwen3:4b")
+                && Files.readString(path).contains("\"timeoutSeconds\": 60"),
+                "Memory preference persists without dropping existing provider settings");
+            AIConfig.saveMemoryPreference(path, true);
+            check(AIConfig.load(path).saveCompanionMemory, "Memory persistence can be re-enabled");
             Files.writeString(path, "{\"provider\":\"ollama\",\"combatRadius\":40}");
             check(AIConfig.load(path).combatRadius == 40, "Combat radius is loaded from config");
             Files.writeString(path, "{\"provider\":\"ollama\",\"combatRadius\":7}");

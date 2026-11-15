@@ -37,11 +37,12 @@ public final class CompanionNetwork {
         void setting(ServerPlayer player, String key, String value);
         void select(ServerPlayer player, String companionId);
         void remove(ServerPlayer player, String companionId);
+        void adoptionChoice(ServerPlayer player, String offerId, String profileId);
         void journalNote(ServerPlayer player, String speciesId, String text, String noteId);
         String journalPage(ServerPlayer player, String speciesId, int speciesOffset, int noteOffset, int biomeOffset);
     }
     private static final class Limits {
-        long refreshAt, actionAt, chatAt, cancelAt, rateNoticeAt, journalAt;
+        long refreshAt, actionAt, chatAt, cancelAt, rateNoticeAt, journalAt, adoptionAt;
         JournalPageRequest lastJournalRequest = new JournalPageRequest(0, "", 0, 0);
     }
     private CompanionNetwork() {}
@@ -118,6 +119,19 @@ public final class CompanionNetwork {
             ByteBufCodecs.stringUtf8(64), Setting::value, Setting::new);
         @Override public Type<Setting> type() { return TYPE; }
     }
+    public record AdoptionChoice(String offerId, String profileId) implements CustomPacketPayload {
+        public static final Type<AdoptionChoice> TYPE = CompanionNetwork.type("adoption_choice");
+        public static final StreamCodec<RegistryFriendlyByteBuf, AdoptionChoice> CODEC = StreamCodec.composite(
+            ByteBufCodecs.stringUtf8(36), AdoptionChoice::offerId,
+            ByteBufCodecs.stringUtf8(36), AdoptionChoice::profileId, AdoptionChoice::new);
+        @Override public Type<AdoptionChoice> type() { return TYPE; }
+    }
+    public record AdoptionOffer(String json) implements CustomPacketPayload {
+        public static final Type<AdoptionOffer> TYPE = CompanionNetwork.type("adoption_offer");
+        public static final StreamCodec<RegistryFriendlyByteBuf, AdoptionOffer> CODEC = StreamCodec.composite(
+            ByteBufCodecs.stringUtf8(4096), AdoptionOffer::json, AdoptionOffer::new);
+        @Override public Type<AdoptionOffer> type() { return TYPE; }
+    }
     public record Snapshot(String json) implements CustomPacketPayload {
         public static final Type<Snapshot> TYPE = CompanionNetwork.type("ui_state");
         public static final StreamCodec<RegistryFriendlyByteBuf, Snapshot> CODEC = StreamCodec.composite(ByteBufCodecs.stringUtf8(MAX_SNAPSHOT), Snapshot::json, Snapshot::new);
@@ -147,9 +161,11 @@ public final class CompanionNetwork {
         c2s.register(JournalNote.TYPE, JournalNote.CODEC);
         c2s.register(JournalPageRequest.TYPE, JournalPageRequest.CODEC);
         c2s.register(Select.TYPE, Select.CODEC); c2s.register(Remove.TYPE, Remove.CODEC);
+        c2s.register(AdoptionChoice.TYPE, AdoptionChoice.CODEC);
         var s2c = PayloadTypeRegistry.clientboundPlay();
         s2c.register(Snapshot.TYPE, Snapshot.CODEC); s2c.register(Notice.TYPE, Notice.CODEC); s2c.register(Popup.TYPE, Popup.CODEC);
         s2c.register(JournalPage.TYPE, JournalPage.CODEC);
+        s2c.register(AdoptionOffer.TYPE, AdoptionOffer.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(Request.TYPE, (payload, context) -> {
             ServerPlayer player = context.player();
             Limits limits = LIMITS.computeIfAbsent(player.getUUID(), key -> new Limits());
@@ -230,6 +246,23 @@ public final class CompanionNetwork {
             if (!NetworkRules.setting(payload.key(), payload.value())) throw new IllegalArgumentException("Invalid setting");
             backend.setting(context.player(), payload.key(), payload.value());
         }));
+        ServerPlayNetworking.registerGlobalReceiver(AdoptionChoice.TYPE, (payload, context) -> {
+            ServerPlayer player = context.player();
+            Limits limits = LIMITS.computeIfAbsent(player.getUUID(), key -> new Limits());
+            long now = System.nanoTime();
+            if (now < limits.adoptionAt) return;
+            limits.adoptionAt = now + 100_000_000L;
+            try {
+                if (!NetworkRules.companionId(payload.offerId())
+                        || !payload.profileId().isEmpty() && !NetworkRules.companionId(payload.profileId()))
+                    throw new IllegalArgumentException("Invalid adoption choice");
+                backend.adoptionChoice(player, payload.offerId(), payload.profileId());
+                sendSnapshot(player);
+            } catch (RuntimeException error) {
+                LOG.warn("Companion adoption choice failed ({})", error.getClass().getSimpleName());
+                notice(player, "error", "Не удалось выбрать профиль питомца.");
+            }
+        });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> LIMITS.remove(handler.player.getUUID()));
     }
 
@@ -264,6 +297,11 @@ public final class CompanionNetwork {
             LOG.warn("Companion UI snapshot failed ({})", error.getClass().getSimpleName());
             notice(player, "error", "Состояние компаньона временно недоступно.");
         }
+    }
+
+    public static void sendAdoptionOffer(ServerPlayer player, String json) {
+        if (json != null && NetworkRules.utf8Fits(json, 4096) && ServerPlayNetworking.canSend(player, AdoptionOffer.TYPE))
+            ServerPlayNetworking.send(player, new AdoptionOffer(json));
     }
 
     public static void sendJournalPage(ServerPlayer player) {

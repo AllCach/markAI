@@ -29,12 +29,13 @@ public final class CompanionRegistryTest {
     public static final class Saved {
         UUID id, owner, entity;
         String name;
-        JsonObject memory, training;
+        JsonObject memory, training, living;
         JsonArray inventory;
         Saved(UUID owner, String name) {
             this.id = UUID.randomUUID(); this.owner = owner; this.entity = UUID.randomUUID(); this.name = name;
             memory = JsonParser.parseString("{\"reports\":[{\"text\":\"Берёзовый дом, синяя крыша\",\"tick\":125}],\"history\":[{\"role\":\"user\",\"content\":\"бро\"}],\"emotion\":{\"trust\":0.75}}").getAsJsonObject();
             training = JsonParser.parseString("{\"experience\":17,\"lessons\":{\"BARK\":3,\"FETCH\":1}}").getAsJsonObject();
+            living = JsonParser.parseString("{\"events\":{\"entries\":[\"remembered place\"]},\"personality\":{\"bravery\":0.7}}").getAsJsonObject();
             inventory = JsonParser.parseString("[{\"Slot\":0,\"id\":\"minecraft:beef\",\"count\":4,\"components\":{\"minecraft:custom_name\":\"Обед\"}}]").getAsJsonArray();
         }
     }
@@ -137,6 +138,13 @@ public final class CompanionRegistryTest {
             check(!current.legacy() && current.selected().get(owner).equals(mark.id) && current.companions().size() == 2, "Versioned roundtrip retains same-owner records and selected ID");
             check(current.companions().get(0).memory.equals(walk.memory) && current.companions().get(0).training.equals(walk.training)
                 && current.companions().get(1).inventory.equals(mark.inventory) && current.companions().get(1).name.equals("Марк"), "New format retains memories, skills, inventory components and Unicode names");
+            Path noMemory = dir.resolve("no-memory.json");
+            store.write(noMemory, List.of(walk), Map.of(owner, walk.id), Map.of(), false);
+            Saved stripped = store.read(noMemory).companions().getFirst();
+            check(stripped.memory == null && !stripped.living.has("events"), "Disabled persistence omits dialogue and event memory");
+            check(stripped.living.has("personality") && stripped.training.equals(walk.training)
+                && stripped.id.equals(walk.id) && stripped.entity.equals(walk.entity), "Disabled persistence retains identity, traits and training");
+            check(walk.memory != null && walk.living.has("events"), "Saving without memory does not erase the live companion state");
             var loaded = registry();
             for (Saved saved : current.companions()) loaded.add(saved);
             loaded.restoreSelections(current.selected());

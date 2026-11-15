@@ -66,11 +66,28 @@ public final class CompanionStore<T> {
         write(path, new Snapshot<>(new ArrayList<>(companions), selected, groups, false));
     }
 
+    public void write(Path path, Collection<T> companions, Map<UUID, UUID> selected,
+                      Map<UUID, GroupChatState> groups, boolean saveMemory) throws IOException {
+        write(path, new Snapshot<>(new ArrayList<>(companions), selected, groups, false), saveMemory);
+    }
+
     public void write(Path path, Snapshot<T> snapshot) throws IOException {
+        write(path, snapshot, true);
+    }
+
+    private void write(Path path, Snapshot<T> snapshot, boolean saveMemory) throws IOException {
         JsonObject root = new JsonObject();
         root.addProperty("schemaVersion", SCHEMA_VERSION);
         JsonArray records = new JsonArray();
-        for (T companion : snapshot.companions()) records.add(JSON.toJsonTree(companion, recordType));
+        for (T companion : snapshot.companions()) {
+            JsonObject record = JSON.toJsonTree(companion, recordType).getAsJsonObject();
+            if (!saveMemory) {
+                record.remove("memory");
+                if (record.has("living") && record.get("living").isJsonObject())
+                    record.getAsJsonObject("living").remove("events");
+            }
+            records.add(record);
+        }
         root.add("companions", records);
         JsonObject selected = new JsonObject();
         for (var entry : snapshot.selected().entrySet()) selected.addProperty(entry.getKey().toString(), entry.getValue().toString());

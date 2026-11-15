@@ -10,6 +10,10 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.Screens;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.options.OptionsScreen;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -31,6 +35,12 @@ public final class MarkAIClient implements ClientModInitializer {
     private static long lastCycleAt;
 
     @Override public void onInitializeClient() {
+        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+            if (screen instanceof OptionsScreen) Screens.getWidgets(screen).add(Button.builder(
+                Component.translatable("markai.options.button"), button ->
+                    client.gui.setScreen(new MarkAISettingsScreen(screen)))
+                .bounds(6, 6, Math.min(130, scaledWidth - 12), 20).build());
+        });
         var category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("markai", "companion"));
         open = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.markai.open", InputConstants.KEY_G, category));
         dialogue = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.markai.dialogue", InputConstants.KEY_H, category));
@@ -54,6 +64,10 @@ public final class MarkAIClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.JournalPage.TYPE, (payload, context) -> {
             STATE.updateJournalPage(payload.json());
             if (Minecraft.getInstance().gui.screen() instanceof CompanionScreen screen) screen.journalPageUpdated();
+        });
+        ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.AdoptionOffer.TYPE, (payload, context) -> {
+            try { Minecraft.getInstance().gui.setScreen(new AdoptionProfileScreen(payload.json())); }
+            catch (RuntimeException invalid) { STATE.notice("error", "Не удалось открыть выбор профиля питомца."); }
         });
         ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.Notice.TYPE, (payload, context) -> STATE.notice(payload.kind(), payload.text()));
         ClientPlayNetworking.registerGlobalReceiver(CompanionNetwork.Popup.TYPE, (payload, context) -> STATE.popupNotice(payload.kind(), payload.text()));
@@ -231,6 +245,10 @@ public final class MarkAIClient implements ClientModInitializer {
             send(new CompanionNetwork.JournalPageRequest(speciesOffset, speciesId, noteOffset, biomeOffset));
     }
     public static void setting(String key, String value) { if (NetworkRules.setting(key, value)) send(new CompanionNetwork.Setting(key, value)); }
+    public static void adoptionChoice(String offerId, String profileId) {
+        if (NetworkRules.companionId(offerId) && (profileId.isEmpty() || NetworkRules.companionId(profileId)))
+            send(new CompanionNetwork.AdoptionChoice(offerId, profileId));
+    }
     private static boolean send(CustomPacketPayload payload) {
         if (available()) { ClientPlayNetworking.send(payload); return true; }
         STATE.notice("error", Component.translatable("markai.ui.no_server").getString());

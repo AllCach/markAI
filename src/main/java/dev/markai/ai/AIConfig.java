@@ -1,7 +1,9 @@
 package dev.markai.ai;
 
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import com.google.gson.Strictness;
+import dev.markai.persistence.AtomicFileReplace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -31,6 +33,8 @@ public final class AIConfig {
     public int maxDialogueLength = 240;
     public int automaticConversationSeconds = 60;
     public boolean memoryEnabled = true;
+    /** Keep conversation memory during play, but omit it from world saves when disabled. */
+    public boolean saveCompanionMemory = true;
     public boolean hudVisible = true;
     public double followDistance = 4.0;
     /** Maximum distance, in blocks, at which a companion may acquire a combat target. */
@@ -74,6 +78,31 @@ public final class AIConfig {
             defaults.recoveredFromInvalid = true;
             return defaults;
         }
+    }
+
+    /** Update one operator-controlled preference without dropping unknown configuration keys. */
+    public static void saveMemoryPreference(Path path, boolean enabled) throws IOException {
+        var gson = new GsonBuilder().setPrettyPrinting().setStrictness(Strictness.STRICT).create();
+        if (!Files.exists(path) || Files.size(path) > 64 * 1024)
+            throw new IOException("MarkAI config is missing or too large");
+        JsonObject root;
+        try {
+            root = gson.fromJson(Files.readString(path, StandardCharsets.UTF_8), JsonObject.class);
+            if (root == null) throw new IllegalArgumentException("Missing config object");
+            AIConfig current = gson.fromJson(root, AIConfig.class);
+            if (current == null) throw new IllegalArgumentException("Missing config values");
+            current.validate();
+        } catch (RuntimeException error) { throw new IOException("Invalid MarkAI config", error); }
+        root.addProperty("saveCompanionMemory", enabled);
+        String output = gson.toJson(root) + "\n";
+        if (output.getBytes(StandardCharsets.UTF_8).length > 64 * 1024)
+            throw new IOException("MarkAI config exceeds byte limit");
+        Path temporary = path.resolveSibling(path.getFileName() + "." + UUID.randomUUID() + ".tmp");
+        try {
+            Files.writeString(temporary, output, StandardCharsets.UTF_8);
+            AtomicFileReplace.replace(temporary, path, (source, destination, options) ->
+                Files.move(source, destination, options));
+        } finally { Files.deleteIfExists(temporary); }
     }
 
     public void validate() {
