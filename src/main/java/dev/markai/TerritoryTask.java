@@ -11,7 +11,7 @@ public final class TerritoryTask {
     public double x, y, z;
     public int radius = 32;
     public int waypoint;
-    public transient long nextMoveAt, nextAlertAt;
+    public transient long nextMoveAt, nextAlertAt, nextScanAt;
     public transient int failedPaths;
 
     public TerritoryTask() { }

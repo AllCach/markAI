@@ -24,6 +24,10 @@ public final class FieldJournal {
 
     private Map<String, Entry> entries = new LinkedHashMap<>();
     private long nextNoteId = 1;
+    private transient boolean dirty;
+
+    public boolean isDirty() { return dirty; }
+    public void markClean() { dirty = false; }
 
     public enum ResearchStage { UNKNOWN, OBSERVED, STUDIED, DOCUMENTED }
 
@@ -66,6 +70,7 @@ public final class FieldJournal {
             if (entries.size() >= MAX_SPECIES) return false;
             entry = new Entry(speciesId, gameTime);
             entries.put(speciesId, entry);
+            dirty = true;
         }
 
         String entityId = entityUuid.toString();
@@ -75,10 +80,12 @@ public final class FieldJournal {
             entry.observedEntityIds.add(entityId);
             entry.observationCount = entry.observedEntityIds.size();
             entry.lastObservedAt = Math.max(entry.lastObservedAt, Math.max(0, gameTime));
+            dirty = true;
         }
         if (validId(biomeId) && !entry.biomes.contains(biomeId)
                 && entry.biomes.size() < MAX_BIOMES_PER_SPECIES) {
             entry.biomes.add(biomeId);
+            dirty = true;
         }
         return newlyObserved;
     }
@@ -90,12 +97,15 @@ public final class FieldJournal {
         Entry entry = entries.get(speciesId);
         if (entry == null || entry.notes.size() >= MAX_NOTES_PER_SPECIES) return false;
         entry.notes.add(new Note(nextNoteId++, normalized, Math.max(0, gameTime)));
+        dirty = true;
         return true;
     }
 
     public boolean removeNote(String speciesId, long noteId) {
         Entry entry = entries.get(speciesId);
-        return entry != null && entry.notes.removeIf(note -> note.id() == noteId);
+        boolean removed = entry != null && entry.notes.removeIf(note -> note.id() == noteId);
+        if (removed) dirty = true;
+        return removed;
     }
 
     public Entry entry(String speciesId) {

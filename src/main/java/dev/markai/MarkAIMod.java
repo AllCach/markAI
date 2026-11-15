@@ -248,10 +248,15 @@ public final class MarkAIMod implements ModInitializer {
                     speciesOffset, noteOffset, biomeOffset));
             }
         });
-        CompanionCombatRules.register((wolf, target) -> companions.values().stream().filter(c -> c.entity.equals(wolf.getUUID()))
-            .anyMatch(c -> c.living.settings.defense && !c.dismissed && LivingCompanionRuntime.validTarget(c, target)));
-        CompanionCombatRules.registerExplicit((wolf, target) -> companions.values().stream().filter(c -> c.entity.equals(wolf.getUUID()))
-            .anyMatch(c -> wolfWork.mayAttack(c, wolf, target)));
+        CompanionCombatRules.register((wolf, target) -> {
+            Companion c = companions.byEntity(wolf.getUUID());
+            return c != null && c.living.settings.defense && !c.dismissed
+                && LivingCompanionRuntime.validTarget(c, target);
+        });
+        CompanionCombatRules.registerExplicit((wolf, target) -> {
+            Companion c = companions.byEntity(wolf.getUUID());
+            return c != null && wolfWork.mayAttack(c, wolf, target);
+        });
         ServerLifecycleEvents.SERVER_STARTED.register(s -> {
             server = s;
             CompanionNetwork.clearRuntime();
@@ -343,7 +348,8 @@ public final class MarkAIMod implements ModInitializer {
         });
         ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
             invalidateOwnerSessions(entity.getUUID());
-            for (Companion c : companions.values()) if (entity.getUUID().equals(c.entity)) {
+            Companion c = companions.byEntity(entity.getUUID());
+            if (c != null) {
                 wolfWork.remove(c.entity);
                 cancelTrick(c);
                 remember(c, entity, level); configured.remove(c.entity); save();
@@ -353,21 +359,24 @@ public final class MarkAIMod implements ModInitializer {
             }
         });
         ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
-            for (Companion c : companions.values()) if (entity.getUUID().equals(c.owner)) {
+            for (Companion c : companions.owned(entity.getUUID())) {
                 c.ownerDied = true;
                 Wolf witness = find(c);
                 if (witness != null && witness.level() == entity.level() && witness.distanceTo(entity) <= 16)
                     livingRuntime.event(c, witness, WorldEvent.Type.PLAYER_DIED, "Хозяин погиб рядом со мной.", 20);
             }
             invalidateOwnerSessions(entity.getUUID());
-            for (Companion c : companions.values()) if (entity.getUUID().equals(c.entity)) {
+            Companion deadCompanion = companions.byEntity(entity.getUUID());
+            if (deadCompanion != null) {
+                Companion c = deadCompanion;
                 wolfWork.remove(c.entity);
                 c.dead = true; configured.remove(c.entity); save();
                 AISession session = aiSessions.get(c.id);
                 if (session != null) invalidate(session);
             }
-            if (entity instanceof Enemy) for (Companion c : companions.values()) {
-                if (source.getEntity() != null && c.entity.equals(source.getEntity().getUUID())) {
+            if (entity instanceof Enemy && source.getEntity() != null) {
+                Companion c = companions.byEntity(source.getEntity().getUUID());
+                if (c != null) {
                     awardTaskXp(c, entity.level().getGameTime(), 12);
                     Wolf witness = find(c);
                     if (witness != null) livingRuntime.event(c, witness, WorldEvent.Type.COMBAT_WON,
@@ -1573,6 +1582,7 @@ public final class MarkAIMod implements ModInitializer {
             ((CompanionInventoryHolder) wolf).markai$releaseCompanion();
         }
         companions.remove(owner.getUUID(), id);
+        memoryPages.remove(id);
         save();
         CompanionNetwork.notice(owner, "status", companion.living.name + (chickenSpecies
             ? " убрана из MarkAI. Курица осталась в мире." : " убран из MarkAI. Приручённый волк остался в мире."));
@@ -2521,8 +2531,15 @@ public final class MarkAIMod implements ModInitializer {
     private void observeNearbyEntities(MinecraftServer currentServer) {
         for (ServerPlayer owner : currentServer.getPlayerList().getPlayers()) {
             if (!(owner.level() instanceof ServerLevel level) || !owner.isAlive() || owner.isSpectator()) continue;
-            FieldJournal journal = fieldJournals.computeIfAbsent(owner.getUUID(), ignored -> new FieldJournal());
-            for (Mob mob : level.getEntitiesOfClass(Mob.class, owner.getBoundingBox().inflate(32, 8, 32), Mob::isAlive)) {
+            var nearby = level.getEntitiesOfClass(Mob.class, owner.getBoundingBox().inflate(32, 8, 32), Mob::isAlive);
+            if (nearby.isEmpty()) continue;
+            FieldJournal journal = fieldJournals.get(owner.getUUID());
+            if (journal == null) {
+                if (fieldJournals.size() >= FieldJournalStore.MAX_OWNERS) continue;
+                journal = new FieldJournal();
+                fieldJournals.put(owner.getUUID(), journal);
+            }
+            for (Mob mob : nearby) {
                 String speciesId = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).toString();
                 String biomeId = level.getBiome(mob.blockPosition()).unwrapKey()
                     .map(key -> key.identifier().toString()).orElse("");
@@ -2545,9 +2562,10 @@ public final class MarkAIMod implements ModInitializer {
                 LOG.error("Cannot save MarkAI state; further commands disabled", e);
             }
         }
-        if (fieldJournalStorageHealthy) {
+        if (fieldJournalStorageHealthy && fieldJournals.values().stream().anyMatch(FieldJournal::isDirty)) {
             try {
                 fieldJournalStore.write(fieldJournalPath(), fieldJournals);
+                fieldJournals.values().forEach(FieldJournal::markClean);
             } catch (IOException | RuntimeException e) {
                 fieldJournalStorageHealthy = false;
                 LOG.error("Cannot save Field Journal; further journal writes disabled", e);

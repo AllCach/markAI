@@ -42,8 +42,9 @@ public final class WorldObserver {
             scans++;
             double radiusSquared = (double) entityRadius * entityRadius;
             var entities = level.getEntities(wolf, wolf.getBoundingBox().inflate(entityRadius),
-                    e -> e.isAlive() && !e.isInvisible() && wolf.distanceToSqr(e) <= radiusSquared && wolf.hasLineOfSight(e))
-                .stream().sorted(Comparator.comparingDouble(wolf::distanceToSqr)).limit(12)
+                    e -> e.isAlive() && !e.isInvisible() && wolf.distanceToSqr(e) <= radiusSquared)
+                .stream().sorted(Comparator.comparingDouble(wolf::distanceToSqr))
+                .filter(wolf::hasLineOfSight).limit(12)
                 .map(e -> new EntityObservation(e.getUUID(), BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).toString(),
                     e.getType().getDescription().getString(), e.getX(), e.getY(), e.getZ(), wolf.distanceTo(e), true, e instanceof Enemy)).toList();
             var important = new ArrayList<EnvironmentSnapshot.BlockObservation>();

@@ -30,15 +30,18 @@ final class TerritoryRuntime {
 
         long now = level.getGameTime();
         if (task.mode == TerritoryTask.Mode.GUARD) {
-            Monster threat = level.getEntitiesOfClass(Monster.class, wolf.getBoundingBox().inflate(12),
-                mob -> mob.isAlive() && mob.position().distanceToSqr(task.anchor()) <= task.radius * task.radius
-                    && LivingCompanionRuntime.validTarget(companion, mob) && wolf.hasLineOfSight(mob))
-                .stream().min(Comparator.comparingDouble(wolf::distanceToSqr)).orElse(null);
-            if (threat != null) {
-                wolf.setOrderedToSit(false);
-                wolf.setTarget(threat);
-                companion.action = "GUARD";
-                return true;
+            if (now >= task.nextScanAt) {
+                task.nextScanAt = now + 20;
+                Monster threat = level.getEntitiesOfClass(Monster.class, wolf.getBoundingBox().inflate(12),
+                    mob -> mob.isAlive() && mob.position().distanceToSqr(task.anchor()) <= task.radius * task.radius
+                        && LivingCompanionRuntime.validTarget(companion, mob) && wolf.hasLineOfSight(mob))
+                    .stream().min(Comparator.comparingDouble(wolf::distanceToSqr)).orElse(null);
+                if (threat != null) {
+                    wolf.setOrderedToSit(false);
+                    wolf.setTarget(threat);
+                    companion.action = "GUARD";
+                    return true;
+                }
             }
             companion.action = "GUARD";
             if (wolf.position().distanceToSqr(task.anchor()) <= 9) {
@@ -88,17 +91,20 @@ final class TerritoryRuntime {
             chickenRuntime.stop(chicken); companion.action = "TERRITORY_UNLOADED"; return true;
         }
         long now = level.getGameTime();
-        Monster threat = level.getEntitiesOfClass(Monster.class, chicken.getBoundingBox().inflate(12),
-            mob -> mob.isAlive() && mob.position().distanceToSqr(task.anchor()) <= task.radius * task.radius)
-            .stream().min(Comparator.comparingDouble(chicken::distanceToSqr)).orElse(null);
-        if (threat != null && chicken.hasLineOfSight(threat)) {
-            chickenRuntime.evade(chicken, 1);
-            if (now >= task.nextAlertAt) {
-                owner.sendSystemMessage(Component.literal(companion.living.name + " заметила угрозу у охраняемого места!"));
-                task.nextAlertAt = now + 200;
+        if (now >= task.nextScanAt) {
+            task.nextScanAt = now + 20;
+            Monster threat = level.getEntitiesOfClass(Monster.class, chicken.getBoundingBox().inflate(12),
+                mob -> mob.isAlive() && mob.position().distanceToSqr(task.anchor()) <= task.radius * task.radius)
+                .stream().min(Comparator.comparingDouble(chicken::distanceToSqr)).orElse(null);
+            if (threat != null && chicken.hasLineOfSight(threat)) {
+                chickenRuntime.evade(chicken, 1);
+                if (now >= task.nextAlertAt) {
+                    owner.sendSystemMessage(Component.literal(companion.living.name + " заметила угрозу у охраняемого места!"));
+                    task.nextAlertAt = now + 200;
+                }
+                companion.action = "LOOKOUT";
+                return true;
             }
-            companion.action = "LOOKOUT";
-            return true;
         }
         if (chicken.position().distanceToSqr(task.anchor()) > 16 && now >= task.nextMoveAt) {
             task.nextMoveAt = now + 20;
